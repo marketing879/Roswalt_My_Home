@@ -1,0 +1,81 @@
+name: roswalt_my_home
+description: Roswalt My Home - Property Management App
+publish_to: 'none'
+version: 2.0.0+3
+
+environment:
+  sdk: '^3.12.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  go_router: ^13.0.0
+  provider: ^6.1.0
+  http: ^1.2.0
+  flutter_secure_storage: ^9.0.0
+  shared_preferences: ^2.2.0
+  fl_chart: ^0.68.0
+  cached_network_image: ^3.3.0
+  intl: ^0.19.0
+  google_fonts: ^8.1.0
+  video_player: ^2.11.1
+  chewie: ^1.13.1
+  image_picker: ^1.2.2
+  shimmer: ^3.0.0
+  local_auth: ^2.3.0
+  flutter_pdfview: ^1.3.2
+  pdf: ^3.10.8
+  printing: ^5.12.0
+  share_plus: ^10.1.4
+  webview_flutter: ^4.9.0
+  path_provider: ^2.1.0
+  open_file: ^3.3.2
+  file_picker: ^10.3.4
+  youtube_player_iframe: ^4.0.0
+
+  url_launcher: ^6.3.2
+  firebase_core: ^4.11.0
+  firebase_auth: ^6.5.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/roswalt_logo.png
+    - assets/images/banner_zaiden.jpg
+    - assets/images/banner_ryla.jpg
+    - assets/images/banner_construction.jpg
+    - assets/images/banner_zeya.png
+    - assets/images/roswalt_icon.png
+    - assets/images/
+    - logos/
+    - assets/images/horse_loader.webp
+    - assets/videos/
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/images/app_icon.png"
+  adaptive_icon_background: "#8B0000"
+  adaptive_icon_foreground: "assets/images/app_icon.png"
+  remove_alpha_ios: false
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

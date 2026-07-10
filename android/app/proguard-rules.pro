@@ -1,0 +1,4 @@
+﻿-keep class com.example.roswalt_my_home.** { *; }
+-keep class io.flutter.** { *; }
+-keep class io.flutter.embedding.android.FlutterFragmentActivity { *; }
+-dontwarn io.flutter.**

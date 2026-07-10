@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "6671009037",
+    "project_id": "roswalt-my-home",
+    "storage_bucket": "roswalt-my-home.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:6671009037:android:4e25ccf60c7ea3c46ddc44",
+        "android_client_info": {
+          "package_name": "com.example.roswalt_my_home"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAYOlYOuAdVkw9Zt0A49oFobHZ_CvgYIas"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:6671009037:android:d73148e8521e6d3e6ddc44",
+        "android_client_info": {
+          "package_name": "com.roswaltrealty.myhome"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAYOlYOuAdVkw9Zt0A49oFobHZ_CvgYIas"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
