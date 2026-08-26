@@ -46,6 +46,8 @@ app.*.map.json
 
 # Secrets - never commit these
 lib/config/secrets.dart
+extensions/*.env
+extensions/*.secret.local
 
 # Signing keystore and credentials - never commit these
 *.jks
@@ -56,3 +58,12 @@ android/key.properties
 # Machine-specific
 .flutter-plugins
 android/local.properties
+
+# Node dependencies (Cloud Functions) - reinstalled via npm install
+node_modules/
+
+# Firebase CLI local cache
+.firebase/
+
+# Ad-hoc debug output
+flutter_log*.txt

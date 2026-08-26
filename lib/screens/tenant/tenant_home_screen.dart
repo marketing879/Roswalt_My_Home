@@ -1,9 +1,11 @@
+import '../client/notifications_screen.dart';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../providers/booking_provider.dart';
-import '../auth/booking_lookup_screen.dart';
+import '../../services/otp_email_service.dart';
+import '../auth/login_screen.dart';
 
 class TenantHomeScreen extends StatelessWidget {
   const TenantHomeScreen({super.key});
@@ -28,8 +30,7 @@ class TenantHomeScreen extends StatelessWidget {
             leading: const SizedBox(),
             actions: [
               IconButton(
-                icon: const Icon(Icons.notifications_outlined, color: Colors.white),
-                onPressed: () {}),
+                icon: const Icon(Icons.notifications_outlined, color: Colors.white), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()))),
             ],
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
@@ -57,9 +58,13 @@ class TenantHomeScreen extends StatelessWidget {
                       ],
                     ),
                     GestureDetector(
-                      onTap: () => Navigator.pushAndRemoveUntil(context,
-                        MaterialPageRoute(builder: (_) => const BookingLookupScreen()),
-                        (r) => false),
+                      onTap: () async {
+                        await OtpEmailService.instance.signOut();
+                        if (!context.mounted) return;
+                        Navigator.pushAndRemoveUntil(context,
+                          MaterialPageRoute(builder: (_) => const LoginScreen()),
+                          (r) => false);
+                      },
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(

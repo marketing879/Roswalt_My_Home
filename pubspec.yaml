@@ -1,7 +1,7 @@
-name: roswalt_my_home
+﻿name: roswalt_my_home
 description: Roswalt My Home - Property Management App
 publish_to: 'none'
-version: 2.0.0+3
+version: 4.0.2+8
 
 environment:
   sdk: '^3.12.0'
@@ -32,11 +32,13 @@ dependencies:
   path_provider: ^2.1.0
   open_file: ^3.3.2
   file_picker: ^10.3.4
-  youtube_player_iframe: ^4.0.0
 
   url_launcher: ^6.3.2
   firebase_core: ^4.11.0
   firebase_auth: ^6.5.3
+  firebase_messaging: ^16.4.3
+  cloud_functions: ^6.3.5
+  cloud_firestore: ^6.7.1
 
 dev_dependencies:
   flutter_test:
@@ -64,6 +66,8 @@ flutter_launcher_icons:
   adaptive_icon_background: "#8B0000"
   adaptive_icon_foreground: "assets/images/app_icon.png"
   remove_alpha_ios: false
+
+
 
 
 

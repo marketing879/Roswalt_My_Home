@@ -1,1 +1,49 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"roswalt-my-home","appId":"1:6671009037:android:4e25ccf60c7ea3c46ddc44","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"roswalt-my-home","configurations":{"android":"1:6671009037:android:4e25ccf60c7ea3c46ddc44","ios":"1:6671009037:ios:9e88d654b45ae9396ddc44","macos":"1:6671009037:ios:9e88d654b45ae9396ddc44","web":"1:6671009037:web:6208cf6839fc18556ddc44","windows":"1:6671009037:web:b016908a4426b8f76ddc44"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "roswalt-my-home",
+          "appId": "1:6671009037:android:d73148e8521e6d3e6ddc44",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "roswalt-my-home",
+          "configurations": {
+            "android": "1:6671009037:android:d73148e8521e6d3e6ddc44",
+            "ios": "1:6671009037:ios:9e88d654b45ae9396ddc44",
+            "macos": "1:6671009037:ios:9e88d654b45ae9396ddc44",
+            "web": "1:6671009037:web:6208cf6839fc18556ddc44",
+            "windows": "1:6671009037:web:b016908a4426b8f76ddc44"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "firebase_hosting/public",
+    "headers": [
+      {
+        "source": "/.well-known/assetlinks.json",
+        "headers": [{ "key": "Content-Type", "value": "application/json" }]
+      }
+    ],
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
+    }
+  ],
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "extensions": {
+    "firestore-send-email": "firebase/firestore-send-email@0.2.10"
+  }
+}

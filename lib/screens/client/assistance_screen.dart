@@ -1,4 +1,5 @@
-﻿import 'dart:convert';
+﻿import 'notifications_screen.dart';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
@@ -298,7 +299,9 @@ class _AssistanceScreenState
                                     : Colors.grey[500])),
                       ],
                     ),
-                    Container(
+                    GestureDetector(
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+                      child: Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: cardBg,
@@ -313,6 +316,7 @@ class _AssistanceScreenState
                           color: isDark
                               ? Colors.white
                               : AppTheme.primaryMaroon),
+                    )
                     ),
                   ],
                 ),

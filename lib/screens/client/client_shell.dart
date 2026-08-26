@@ -19,6 +19,7 @@ import 'documents_screen.dart';
 import 'payments_screen.dart';
 import 'assistance_screen.dart';
 import 'construction_screen.dart';
+import 'notifications_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'credhomes_screen.dart';
 
@@ -458,8 +459,12 @@ class _ClientShellState extends State<ClientShell> {
                           ),
                         ),
                         const SizedBox(height: 2),
-                        Text(clientName, maxLines: 2, overflow: TextOverflow.ellipsis,
+                        FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(clientName, maxLines: 1, overflow: TextOverflow.ellipsis,
                           style: const TextStyle(color: Color(0xFFF0F0F0), fontSize: 15, fontWeight: FontWeight.bold)),
+                          ),
                         const SizedBox(height: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -598,7 +603,10 @@ class _ClientShellState extends State<ClientShell> {
 
                   _drawerItem(Icons.notifications_outlined,
                       'Notifications', isDark, cardBg,
-                      () => Navigator.pop(context)),
+                      () {
+                        Navigator.pop(context);
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+                      }),
                   _drawerItem(Icons.privacy_tip_outlined,
                       'Privacy Policy', isDark, cardBg,
                       () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen())); }),

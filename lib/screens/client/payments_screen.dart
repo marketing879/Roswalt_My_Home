@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'document_viewer_screen.dart';
 import 'demand_webview_screen.dart';
 import 'dart:io';
@@ -76,7 +77,7 @@ class _PaymentsScreenState extends State<PaymentsScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _fetchDemands());
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
   }
 
   @override
@@ -110,6 +111,7 @@ class _PaymentsScreenState extends State<PaymentsScreen>
                   fontWeight: FontWeight.w600, fontSize: 12),
               tabs: const [
                 Tab(text: 'Overview'),
+                Tab(text: 'Demands'),
                 Tab(text: 'Ledger'),
                 Tab(text: 'Receipts'),
                 Tab(text: 'TDS'),
@@ -121,6 +123,7 @@ class _PaymentsScreenState extends State<PaymentsScreen>
           controller: _tabController,
           children: [
             _buildOverview(isDark),
+              _buildDemands(isDark),
             _buildLedger(isDark),
             _buildReceipts(isDark),
             _buildTDS(isDark),
@@ -283,6 +286,54 @@ class _PaymentsScreenState extends State<PaymentsScreen>
 
 
 
+  Widget _buildDemands(bool isDark) {
+    final demands = List<Map<String, dynamic>>.from(Provider.of<BookingProvider>(context, listen: false).demands);
+    demands.sort((a, b) {
+      final da = DateTime.tryParse((a["date"] ?? "").toString()) ?? DateTime(2100);
+      final db = DateTime.tryParse((b["date"] ?? "").toString()) ?? DateTime(2100);
+      return da.compareTo(db);
+    });
+    if (demands.isEmpty) {
+      return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(Icons.description_outlined, size: 48, color: Colors.grey[400]),
+        const SizedBox(height: 12),
+        Text("No demands available", style: TextStyle(color: Colors.grey[500])),
+      ]));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: demands.length,
+      itemBuilder: (context, index) {
+        final d = demands[index];
+        return GestureDetector(
+          onTap: () => _openDemandLink(context, d),
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8)],
+            ),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+              Container(
+                width: 36, height: 36,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: AppTheme.primaryMaroon.withOpacity(0.1)),
+                child: Icon(Icons.attach_file, size: 18, color: AppTheme.primaryMaroon),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text((d["demandNo"] ?? "Demand").toString(), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: isDark ? Colors.white : const Color(0xFF1A1A1A))),
+                const SizedBox(height: 4),
+                Text("Due: " + _formatDate(d["date"]), style: TextStyle(fontSize: 10, color: isDark ? Colors.white54 : Colors.grey[500])),
+              ])),
+              Icon(Icons.open_in_new, size: 16, color: AppTheme.primaryMaroon),
+            ]),
+          ),
+        );
+      },
+    );
+  }
   Widget _buildMilestone(Map<String, dynamic> milestone, int index, bool isDark) {
     final demands = Provider.of<BookingProvider>(context, listen: false).demands;
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -297,7 +348,7 @@ class _PaymentsScreenState extends State<PaymentsScreen>
       ]),
       const SizedBox(width: 12),
       Expanded(child: GestureDetector(
-        onTap: () => _openDemandLink(context, milestone),
+        onTap: null, // moved to Demands tab
         child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(14),
@@ -321,7 +372,7 @@ class _PaymentsScreenState extends State<PaymentsScreen>
           ])),
           const SizedBox(width: 8),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text("₹ ${milestone["amount"]}", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: isDark ? Colors.white : const Color(0xFF1A1A1A))),
+            Text("₹ ${milestone["netAmount"]}", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: isDark ? Colors.white : const Color(0xFF1A1A1A))),
             const SizedBox(height: 4),
             Text("+ Tax: ₹${milestone["tax"] ?? "0"}", style: TextStyle(fontSize: 10, color: Colors.grey[400])),
           ]),
@@ -347,7 +398,7 @@ class _PaymentsScreenState extends State<PaymentsScreen>
       MaterialPageRoute(
         builder: (_) => DemandWebViewScreen(
           url: link,
-          title: (milestone["name"] ?? "Demand").toString(),
+          title: (milestone["demandNo"] ?? "Demand").toString(),
         ),
       ),
     );
@@ -590,9 +641,20 @@ class _PaymentsScreenState extends State<PaymentsScreen>
     );
   }
 
-  Future<void> _downloadSingleReceipt(BuildContext context, Map<String, dynamic> r) async {
+    String _getProjectLogoAsset(String? projectName) {
+    if (projectName == null) return 'logos/ryla.png';
+    final p = projectName.toLowerCase();
+    if (p.contains('zaiden')) return 'logos/zaiden.png';
+    if (p.contains('raya')) return 'logos/raya.png';
+    if (p.contains('zeya')) return 'logos/zeya.png';
+    if (p.contains('ryla')) return 'logos/ryla.png';
+    return 'logos/ryla.png';
+  }
+Future<void> _downloadSingleReceipt(BuildContext context, Map<String, dynamic> r) async {
     final provider = Provider.of<BookingProvider>(context, listen: false);
     final booking = provider.selectedBooking;
+    final logoBytes1 = await rootBundle.load(_getProjectLogoAsset(booking?.projectName));
+    final logoImage = pw.MemoryImage(logoBytes1.buffer.asUint8List());
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
       content: Text("Generating receipt..."),
       backgroundColor: Color(0xFF543813),
@@ -629,9 +691,13 @@ class _PaymentsScreenState extends State<PaymentsScreen>
           build: (ctx) => pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Text("ROSWALT REALTY", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: brown)),
+              pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                  pw.Image(logoImage, width: 70, height: 70),
+                  pw.SizedBox(height: 6),
+                  pw.Text("A.S HIGHTECH LLP", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: brown)),
               pw.SizedBox(height: 2),
               pw.Text("Roswalt Zaiden, Andheri West, Mumbai - 400053", style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+                ]),
               pw.SizedBox(height: 12),
               pw.Divider(color: brown, thickness: 1.2),
               pw.SizedBox(height: 12),
@@ -721,6 +787,8 @@ class _PaymentsScreenState extends State<PaymentsScreen>
     final allBookings = provider.allBookings;
     final booking = provider.selectedBooking;
     if (booking == null) return;
+    final logoBytes2 = await rootBundle.load(_getProjectLogoAsset(booking.projectName));
+    final logoImage = pw.MemoryImage(logoBytes2.buffer.asUint8List());
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
       content: Text('Generating ledger PDF...'),
       backgroundColor: Color(0xFF543813),
@@ -936,7 +1004,7 @@ class _PaymentsScreenState extends State<PaymentsScreen>
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
                 pw.Text('System-generated document. No signature required. Support: 8879778560 . customercare@roswaltrealty.com', style: pw.TextStyle(fontSize: 7, color: PdfColors.grey500)),
-                pw.Text('ROSWALT REALTY MY HOME', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: gold)),
+                pw.Text('A.S HIGHTECH LLP MY HOME', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: gold)),
               ],
             ),
           ),
@@ -945,15 +1013,19 @@ class _PaymentsScreenState extends State<PaymentsScreen>
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Column(
+                pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                    pw.Image(logoImage, width: 60, height: 60),
+                    pw.SizedBox(height: 6),
+                    pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('ROSWALT REALTY', style: pw.TextStyle(fontSize: 17, fontWeight: pw.FontWeight.bold, color: brown)),
+                    pw.Text('A.S HIGHTECH LLP', style: pw.TextStyle(fontSize: 17, fontWeight: pw.FontWeight.bold, color: brown)),
                     pw.SizedBox(height: 2),
                     pw.Text('Roswalt Zaiden, Andheri West, Mumbai - 400053', style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
                     pw.Text('CIN: U45200MH2010PTC208765  .  RERA: P51700049358', style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
                   ],
                 ),
+                  ]),
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.end,
                   children: [
@@ -1127,3 +1199,6 @@ class _PaymentsScreenState extends State<PaymentsScreen>
     }
   }
 }
+
+
+

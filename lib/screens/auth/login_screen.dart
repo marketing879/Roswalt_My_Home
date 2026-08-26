@@ -1,12 +1,9 @@
-﻿import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/booking_provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:video_player/video_player.dart';
-import 'package:local_auth/local_auth.dart';
-import '../client/client_shell.dart';
-import '../auth/booking_lookup_screen.dart';
+import 'phone_verification_screen.dart';
 import '../partner/partner_shell.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -16,13 +13,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  static const _bronze = Color(0xFF543813);
   static const _gold = Color(0xFFD4AF37);
 
-  int _loginMode = 0;
-  final _emailController = TextEditingController();
-  bool _isLoading = false;
-  String? _errorMessage;
   VideoPlayerController? _videoController;
 
   @override
@@ -45,7 +37,6 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void dispose() {
     _videoController?.dispose();
-    _emailController.dispose();
     super.dispose();
   }
 
@@ -54,71 +45,6 @@ class _LoginScreenState extends State<LoginScreen> {
     if (hour < 12) return 'Good Morning';
     if (hour < 17) return 'Good Afternoon';
     return 'Good Evening';
-  }
-
-  Future<void> _loginWithEmail() async {
-    if (_emailController.text.trim().isEmpty) {
-      setState(() => _errorMessage = 'Please enter your email address.');
-      return;
-    }
-    Navigator.pushReplacement(context,
-        MaterialPageRoute(builder: (_) => BookingLookupScreen(email: _emailController.text.trim())));
-  }
-
-  Future<void> _loginWithBiometric() async {
-    setState(() { _isLoading = true; _errorMessage = null; });
-    try {
-      final auth = LocalAuthentication();
-      final canCheck = await auth.canCheckBiometrics;
-      if (!canCheck) {
-        setState(() { _isLoading = false; _errorMessage = 'Biometric not available.'; });
-        return;
-      }
-      final didAuth = await auth.authenticate(
-        localizedReason: 'Authenticate to access Roswalt My Home',
-        options: const AuthenticationOptions(biometricOnly: false, stickyAuth: true),
-      );
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-      if (didAuth) {
-        Navigator.pushReplacement(context,
-            MaterialPageRoute(builder: (_) => const BookingLookupScreen()));
-      } else {
-        setState(() => _errorMessage = 'Authentication failed.');
-      }
-    } catch (e) {
-      if (e is PlatformException) {
-        String friendly;
-        bool fallbackToEmail = false;
-        switch (e.code) {
-          case 'NotAvailable':
-          case 'NotEnrolled':
-            friendly = 'Fingerprint is not set up on this device. Please use Email login instead.';
-            fallbackToEmail = true;
-            break;
-          case 'PasscodeNotSet':
-            friendly = 'Please set a screen lock (PIN/pattern) on your device to use biometric login, or use Email login instead.';
-            fallbackToEmail = true;
-            break;
-          case 'LockedOut':
-            friendly = 'Too many failed attempts. Please try again in a moment or use Email login.';
-            break;
-          case 'PermanentlyLockedOut':
-            friendly = 'Biometric login is locked. Please unlock your device with your PIN/pattern first, or use Email login.';
-            fallbackToEmail = true;
-            break;
-          default:
-            friendly = 'Could not verify biometrics. Please use Email login instead.';
-        }
-        setState(() {
-          _isLoading = false;
-          _errorMessage = friendly;
-          if (fallbackToEmail) _loginMode = 0;
-        });
-      } else {
-        setState(() { _isLoading = false; _errorMessage = 'Something went wrong. Please use Email login instead.'; });
-      }
-    }
   }
 
   void _showCPLoginDialog() {
@@ -241,51 +167,40 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
-  Widget _modeTab(int index, IconData icon, String label) {
-    final isActive = _loginMode == index;
+
+  Widget _accountTypeCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
-      onTap: () => setState(() { _loginMode = index; _errorMessage = null; }),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isActive ? _gold.withOpacity(0.25) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: isActive ? _gold.withOpacity(0.6) : Colors.white.withOpacity(0.15))),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 14, color: isActive ? _gold : Colors.white60),
-          const SizedBox(width: 4),
-          Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
-              color: isActive ? _gold : Colors.white60)),
+          color: Colors.white.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withOpacity(0.15)),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 12, offset: const Offset(0, 4))]),
+        child: Row(children: [
+          Container(width: 48, height: 48,
+            decoration: BoxDecoration(
+              color: _gold.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _gold.withOpacity(0.35))),
+            child: Icon(icon, color: _gold, size: 24)),
+          const SizedBox(width: 14),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 2),
+            Text(subtitle, style: TextStyle(color: Colors.white.withOpacity(0.55), fontSize: 12)),
+          ])),
+          Icon(Icons.arrow_forward_ios, color: Colors.white.withOpacity(0.4), size: 14),
         ]),
       ),
     );
-  }
-
-  Widget _inputField({
-    required String label, required String hint,
-    required TextEditingController controller, required IconData icon,
-    bool obscure = false, Widget? suffix,
-  }) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white70)),
-      const SizedBox(height: 6),
-      Container(
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withOpacity(0.25))),
-        child: TextField(
-          controller: controller, obscureText: obscure,
-          style: const TextStyle(color: Colors.white, fontSize: 14),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 14),
-            prefixIcon: Icon(icon, color: _gold, size: 20),
-            suffix: suffix, border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14))),
-      ),
-    ]);
   }
 
   @override
@@ -321,111 +236,30 @@ class _LoginScreenState extends State<LoginScreen> {
                 Text(_greeting, style: GoogleFonts.playfairDisplay(
                     fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
                 const SizedBox(height: 4),
-                Text('Sign in to access your property dashboard',
+                Text('Select your account type to continue',
                     style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.6))),
                 const SizedBox(height: 28),
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: Colors.white.withOpacity(0.15)),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2),
-                        blurRadius: 24, offset: const Offset(0, 8))]),
-                  child: Column(children: [
-                    Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(16)),
-                      child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-                        _modeTab(0, Icons.email_outlined, 'Email'),
-                        _modeTab(1, Icons.fingerprint, 'Biometric'),
-                      ]),
-                    ),
-                    const SizedBox(height: 24),
-                    if (_loginMode == 0) ...[
-                      _inputField(label: 'Email Address', hint: 'Enter your email',
-                        controller: _emailController, icon: Icons.email_outlined),
-                    ],
-                    if (_loginMode == 1) ...[
-                      const SizedBox(height: 20),
-                      Container(width: 100, height: 100,
-                        decoration: BoxDecoration(shape: BoxShape.circle,
-                          color: _gold.withOpacity(0.1),
-                          border: Border.all(color: _gold.withOpacity(0.3), width: 2)),
-                        child: Icon(Icons.fingerprint, color: _gold, size: 52)),
-                      const SizedBox(height: 16),
-                      Text('Touch the fingerprint sensor',
-                          style: TextStyle(color: Colors.white60, fontSize: 14)),
-                      const SizedBox(height: 20),
-                    ],
-                    if (_errorMessage != null) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.red.withOpacity(0.4))),
-                        child: Row(children: [
-                          const Icon(Icons.error_outline, color: Colors.red, size: 16),
-                          const SizedBox(width: 8),
-                          Expanded(child: Text(_errorMessage!,
-                              style: const TextStyle(color: Colors.redAccent, fontSize: 12))),
-                        ])),
-                    ],
-                    const SizedBox(height: 24),
-                    Container(
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(colors: [_gold, const Color(0xFF8B6914)]),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [BoxShadow(color: _gold.withOpacity(0.35),
-                            blurRadius: 16, offset: const Offset(0, 6))]),
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : () {
-                          if (_loginMode == 0) _loginWithEmail();
-                          else _loginWithBiometric();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent, shadowColor: Colors.transparent,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                        child: _isLoading
-                            ? const SizedBox(width: 22, height: 22,
-                                child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
-                            : Text(_loginMode == 0 ? 'SIGN IN' : 'AUTHENTICATE',
-                                style: const TextStyle(color: Colors.white,
-                                    fontWeight: FontWeight.bold, fontSize: 15, letterSpacing: 1.5)),
-                      ),
-                    ),
-                  ]),
+                _accountTypeCard(
+                  icon: Icons.badge_outlined,
+                  title: 'Employee',
+                  subtitle: 'Roswalt Realty staff login',
+                  onTap: () => Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => const PhoneVerificationScreen(accountType: AccountType.employee))),
                 ),
-                const SizedBox(height: 16),
-                GestureDetector(
+                _accountTypeCard(
+                  icon: Icons.home_work_outlined,
+                  title: 'Client',
+                  subtitle: 'Access your property & booking',
+                  onTap: () => Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => const PhoneVerificationScreen(accountType: AccountType.client))),
+                ),
+                _accountTypeCard(
+                  icon: Icons.handshake_outlined,
+                  title: 'Channel Partner',
+                  subtitle: 'Access your CP dashboard',
                   onTap: _showCPLoginDialog,
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft, end: Alignment.bottomRight,
-                        colors: [Color(0xFF1A0800), Color(0xFF2D1200), Color(0xFF1A0800)]),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withOpacity(0.15)),
-                      boxShadow: [BoxShadow(color: _gold.withOpacity(0.2),
-                          blurRadius: 12, offset: const Offset(0, 4))]),
-                    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      const Icon(Icons.handshake_outlined, color: Color(0xFFE8E0D0), size: 18),
-                      const SizedBox(width: 8),
-                      const Text('LOGIN AS CHANNEL PARTNER',
-                          style: TextStyle(color: Color(0xFFE8E0D0),
-                              fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: 1.2)),
-                    ]),
-                  ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 20),
                 Text('© 2026 Roswalt Realty',
                     style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.3))),
               ]),

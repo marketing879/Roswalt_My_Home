@@ -1,0 +1,11 @@
+{
+  "projects": {},
+  "targets": {},
+  "etags": {
+    "roswalt-my-home": {
+      "extensionInstances": {
+        "firestore-send-email": "398e41e4a28122ebd389786608a137cefcae3cde713c2bfd16e15cb24c288c2b"
+      }
+    }
+  }
+}

@@ -2,9 +2,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/booking_provider.dart';
+import '../../services/otp_email_service.dart';
 import '../client/client_shell.dart';
 import '../tenant/tenant_shell.dart';
-import 'login_screen.dart';
+import '../employee/employee_shell.dart';
 import '../splash/splash_screen.dart';
 
 class SessionWrapper extends StatefulWidget {
@@ -14,8 +15,6 @@ class SessionWrapper extends StatefulWidget {
 }
 
 class _SessionWrapperState extends State<SessionWrapper> {
-  bool _checking = true;
-
   @override
   void initState() {
     super.initState();
@@ -33,10 +32,22 @@ class _SessionWrapperState extends State<SessionWrapper> {
               booking.customerType == 'Tenant'
                   ? const TenantShell()
                   : const ClientShell()));
-    } else {
-      Navigator.pushReplacement(context,
-          MaterialPageRoute(builder: (_) => const SplashScreen()));
+      return;
     }
+
+    await OtpEmailService.instance.restoreCachedEmail();
+    if (!mounted) return;
+    final employeeName = OtpEmailService.instance.cachedEmployeeName;
+    if (OtpEmailService.instance.isVerified && employeeName != null) {
+      Navigator.pushReplacement(context,
+          MaterialPageRoute(builder: (_) => EmployeeShell(
+              employeeName: employeeName,
+              employeeId: OtpEmailService.instance.cachedEmployeeId)));
+      return;
+    }
+
+    Navigator.pushReplacement(context,
+        MaterialPageRoute(builder: (_) => const SplashScreen()));
   }
 
   @override

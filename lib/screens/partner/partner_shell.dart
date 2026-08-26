@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+﻿import '../client/notifications_screen.dart';
+import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:provider/provider.dart';
 import '../../theme/app_theme.dart';
@@ -12,6 +13,9 @@ import 'cp_help_support_screen.dart';
 import '../client/construction_screen.dart';
 import 'cp_payouts_screen.dart';
 import 'cp_leaderboard_screen.dart';
+import 'cp_training_screen.dart';
+import 'cp_marketing_collateral_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class PartnerShell extends StatefulWidget {
   const PartnerShell({super.key});
@@ -52,10 +56,15 @@ class _PartnerShellState extends State<PartnerShell> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bookingProvider = Provider.of<BookingProvider>(context);
+    final cpName = (bookingProvider.cpDashboardData?['cpName'] as String?)?.trim();
+    final cpDisplayName = (cpName != null && cpName.isNotEmpty) ? cpName : 'Channel Partner';
+    final cpMahaRera = bookingProvider.mahaRERA ?? '--';
     final screens = [
       CPDashboardScreen(onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer()),
       CPLeadsScreen(onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer()),
       CPBookingsScreen(onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer()),
+      CPTrainingScreen(onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer()),
       CPProfileScreen(onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer()),
     ];
     return Scaffold(
@@ -85,12 +94,12 @@ class _PartnerShellState extends State<PartnerShell> {
                       border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.5), width: 2)),
                     child: const Icon(Icons.person, color: Color(0xFFD4AF37), size: 32)),
                   const SizedBox(height: 8),
-                  const Text('Rohit Verma', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  Text(cpDisplayName, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 6),
                   Container(margin: const EdgeInsets.only(bottom: 16),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(color: const Color(0xFFD4AF37).withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
-                    child: const Text('CP-10221', style: TextStyle(color: Color(0xFFD4AF37), fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5))),
+                    child: Text(cpMahaRera, style: const TextStyle(color: Color(0xFFD4AF37), fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5))),
                 ])),
             ])),
           // Menu items
@@ -98,7 +107,6 @@ class _PartnerShellState extends State<PartnerShell> {
             _drawerItem(context, Icons.dashboard_outlined, 'Dashboard', () { setState(() => _currentIndex = 0); Navigator.pop(context); }, isDark, active: _currentIndex == 0),
             _drawerItem(context, Icons.people_outlined, 'My Visit', () { setState(() => _currentIndex = 1); Navigator.pop(context); }, isDark, active: _currentIndex == 1),
             _drawerItem(context, Icons.assignment_outlined, 'My Bookings', () { setState(() => _currentIndex = 2); Navigator.pop(context); }, isDark, active: _currentIndex == 2),
-            _drawerItem(context, Icons.inventory_outlined, 'Inventory', () => Navigator.pop(context), isDark),
             _drawerItem(context, Icons.construction_outlined, 'Construction Updates', () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const ConstructionScreen()));
@@ -107,8 +115,16 @@ class _PartnerShellState extends State<PartnerShell> {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const CPPayoutsScreen()));
             }, isDark),
+            _drawerItem(context, Icons.campaign_outlined, 'Marketing Collateral', () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const CPMarketingCollateralScreen()));
+            }, isDark),
+            _drawerItem(context, Icons.support_agent_outlined, 'Assistance', () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const CPAssistanceScreen()));
+            }, isDark),
             Divider(color: isDark ? Colors.white12 : const Color(0xFF543813).withOpacity(0.15)),
-            _drawerItem(context, Icons.person_outlined, 'My Profile', () => Navigator.pop(context), isDark),
+            _drawerItem(context, Icons.person_outlined, 'My Profile', () { setState(() => _currentIndex = 4); Navigator.pop(context); }, isDark, active: _currentIndex == 4),
             _drawerItem(context, Icons.settings_outlined, 'Settings', () => Navigator.pop(context), isDark),
             _drawerItem(context, Icons.help_outline, 'Help & Support', () {
               Navigator.pop(context);
@@ -145,7 +161,8 @@ class _PartnerShellState extends State<PartnerShell> {
             _navItem(0, Icons.dashboard_outlined, Icons.dashboard, 'Dashboard', isDark),
             _navItem(1, Icons.directions_walk_outlined, Icons.directions_walk, 'Visits', isDark),
             _navItem(2, Icons.assignment_outlined, Icons.assignment, 'Bookings', isDark),
-            _navItem(3, Icons.person_outlined, Icons.person, 'Profile', isDark),
+            _navItem(3, Icons.play_circle_outline, Icons.play_circle, 'Training', isDark),
+            _navItem(4, Icons.person_outlined, Icons.person, 'Profile', isDark),
           ]),
       ),
     );
@@ -220,6 +237,8 @@ class CPDashboardScreen extends StatefulWidget {
 class _CPDashboardScreenState extends State<CPDashboardScreen> {
   int _currentBanner = 0;
   final PageController _bannerController = PageController();
+  String _selectedProject = 'All Projects';
+  static const _projectOptions = ['All Projects', 'Roswalt Zaiden', 'Roswalt Ryla', 'Roswalt Raya', 'Roswalt Zeya', 'Roswalt Zyon'];
 
   List<Map<String, dynamic>> _banners = [
     {'label': 'ROSWALT ZAIDEN', 'remoteImage': null, 'image': 'assets/images/banner_zaiden.jpg', 'gradientColors': <Color>[const Color(0xFF1A0A0A), const Color(0xFF3D0000)], 'tag': 'HOT PROJECT', 'title': 'ROSWALT ZAIDEN', 'subtitle': 'Premium 2 & 3 BHK', 'progress': 0.0, 'progressLabel': '', 'accentColor': const Color(0xFFD4AF37), 'linkUrl': ''},
@@ -321,6 +340,12 @@ class _CPDashboardScreenState extends State<CPDashboardScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? const Color(0xFF121212) : _cream;
     final cpData = Provider.of<BookingProvider>(context).cpDashboardData;
+    final _projectWiseData = (cpData?['projectWiseData'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? const [];
+    final _displayedWalkIns = _selectedProject == 'All Projects'
+        ? (cpData?['totalWalkIns'] ?? 0)
+        : _projectWiseData
+            .where((p) => (p['projectName'] as String? ?? '').toUpperCase() == _selectedProject.toUpperCase())
+            .fold<int>(0, (sum, p) => sum + ((p['walkIns'] as num?)?.toInt() ?? 0));
     final _walkIns = (cpData?['totalWalkIns'] as num?)?.toDouble() ?? 0;
     final _bookingsCount = (cpData?['totalBookings'] as num?)?.toDouble() ?? 0;
     final amountLoss = (_walkIns - _bookingsCount) * (603 * 26500);
@@ -394,7 +419,7 @@ class _CPDashboardScreenState extends State<CPDashboardScreen> {
                         boxShadow: [BoxShadow(color: const Color(0xFFD4AF37).withOpacity(0.15), blurRadius: 8)]),
                       child: const Icon(Icons.menu_rounded, color: Colors.white, size: 22))),
                   Row(children: [
-                    IconButton(icon: const Icon(Icons.notifications_outlined, color: Colors.white, size: 22), onPressed: () {}),
+                    IconButton(icon: const Icon(Icons.notifications_outlined, color: Colors.white, size: 22), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()))),
                     IconButton(icon: const Icon(Icons.logout, color: Colors.white, size: 22),
                       onPressed: () => Navigator.pushAndRemoveUntil(context,
                           MaterialPageRoute(builder: (_) => const LoginScreen()), (r) => false)),
@@ -422,12 +447,14 @@ class _CPDashboardScreenState extends State<CPDashboardScreen> {
                     color: isDark ? Colors.white54 : Colors.grey[600])),
               ])),
           ]),
-          const SizedBox(height: 6),
+          const SizedBox(height: 12),
+          _buildProjectFilterDropdown(isDark),
+          const SizedBox(height: 12),
           GridView.count(
             shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
             crossAxisCount: 3, crossAxisSpacing: 10, mainAxisSpacing: 10, childAspectRatio: 1.1,
             children: [
-              _stat('Total Walk-Ins', (cpData?['totalWalkIns'] ?? 0).toString(), _bronze, isDark),
+              _stat('Total Walk-Ins', _displayedWalkIns.toString(), _bronze, isDark),
               _stat('Total Leads', (cpData?['totalLeads'] ?? 0).toString(), _bronze, isDark),
               _stat('Total Bookings', (cpData?['totalBookings'] ?? 0).toString(), Colors.green, isDark),
               _amountLossCard(isDark, amountLoss, brokerage),
@@ -438,44 +465,6 @@ class _CPDashboardScreenState extends State<CPDashboardScreen> {
           const SizedBox(height: 16),
           
           
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
-                colors: [Color(0xFF6B4A1E), Color(0xFF543813), Color(0xFF3A2509)]),
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [
-                BoxShadow(color: const Color(0xFF543813).withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 6)),
-                BoxShadow(color: const Color(0xFFD4AF37).withOpacity(0.15), blurRadius: 30, spreadRadius: 2),
-              ]),
-            child: Stack(children: [
-              // Shine effect
-              Positioned(top: 0, left: 0, right: 0, child: Container(
-                height: 1,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [Colors.transparent, Colors.white.withOpacity(0.3), Colors.transparent]),
-                  borderRadius: BorderRadius.circular(1)))),
-              Positioned(top: 6, left: 20, child: Container(
-                width: 80, height: 8,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  gradient: LinearGradient(colors: [Colors.white.withOpacity(0.15), Colors.transparent])))),
-              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('PENDING FOLLOW-UPS', style: TextStyle(color: Colors.white60, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
-                  const SizedBox(height: 4),
-                  Text('18', style: GoogleFonts.playfairDisplay(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold,
-                      shadows: [Shadow(color: const Color(0xFFD4AF37).withOpacity(0.3), blurRadius: 8)])),
-                ]),
-                Container(width: 48, height: 48,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.12), borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.white.withOpacity(0.2)),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 6)]),
-                  child: const Icon(Icons.people_outline, color: Colors.white70, size: 26)),
-              ]),
-            ])),
-          const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -583,6 +572,52 @@ class _CPDashboardScreenState extends State<CPDashboardScreen> {
       ]));
   }
 
+  Widget _buildProjectFilterDropdown(bool isDark) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+            colors: [Color(0xFF6B4A1E), Color(0xFF543813), Color(0xFF3A2509)]),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _gold.withOpacity(0.5), width: 1),
+        boxShadow: [
+          BoxShadow(color: const Color(0xFF543813).withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 4)),
+          BoxShadow(color: _gold.withOpacity(0.12), blurRadius: 16, spreadRadius: 1),
+        ],
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedProject,
+          isExpanded: true,
+          icon: Icon(Icons.keyboard_arrow_down_rounded, color: _gold),
+          dropdownColor: isDark ? const Color(0xFF1E1E1E) : const Color(0xFF3A2509),
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
+          selectedItemBuilder: (context) => _projectOptions
+              .map((p) => Row(children: [
+                    Icon(Icons.apartment_rounded, size: 16, color: _gold),
+                    const SizedBox(width: 8),
+                    Text(p, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+                  ]))
+              .toList(),
+          items: _projectOptions
+              .map((p) => DropdownMenuItem(
+                    value: p,
+                    child: Row(children: [
+                      Icon(Icons.apartment_outlined, size: 16, color: _gold),
+                      const SizedBox(width: 8),
+                      Text(p, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                    ]),
+                  ))
+              .toList(),
+          onChanged: (value) {
+            if (value != null) setState(() => _selectedProject = value);
+          },
+        ),
+      ),
+    );
+  }
+
   Widget _stat(String label, String value, Color color, bool isDark) {
     return Container(
       decoration: BoxDecoration(
@@ -665,60 +700,75 @@ class CPLeadsScreen extends StatefulWidget {
 class _CPLeadsScreenState extends State<CPLeadsScreen> {
   static const _bronze = Color(0xFF543813);
   static const _gold = Color(0xFFD4AF37);
-  int _tab = 0;
-  final tabs = ['All', 'Hot', 'Warm', 'Cold'];
 
-  final leads = [
-    {'name': 'Rajesh Kumar', 'phone': '+91 98765 43210', 'project': 'Roswalt Zaiden', 'budget': 'Rs.1.2Cr', 'status': 'Hot', 'color': Colors.red, 'date': '20 Jun 2026'},
-    {'name': 'Priya Shah', 'phone': '+91 87654 32109', 'project': 'Roswalt Ryla', 'budget': 'Rs.85L', 'status': 'Warm', 'color': Colors.orange, 'date': '19 Jun 2026'},
-    {'name': 'Amit Patel', 'phone': '+91 76543 21098', 'project': 'Roswalt Raya', 'budget': 'Rs.1.5Cr', 'status': 'Cold', 'color': Colors.blue, 'date': '18 Jun 2026'},
-    {'name': 'Sneha Joshi', 'phone': '+91 65432 10987', 'project': 'Roswalt Zeya', 'budget': 'Rs.2Cr', 'status': 'Hot', 'color': Colors.red, 'date': '17 Jun 2026'},
-    {'name': 'Vikram Singh', 'phone': '+91 54321 09876', 'project': 'Roswalt Zaiden', 'budget': 'Rs.95L', 'status': 'Warm', 'color': Colors.orange, 'date': '16 Jun 2026'},
-  ];
+  String _fmtVisitDate(String iso) {
+    try {
+      final d = DateTime.parse(iso);
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return '${d.day} ${months[d.month - 1]} ${d.year}';
+    } catch (_) {
+      return iso.isEmpty ? '--' : iso;
+    }
+  }
+
+  String _maskPhone(String phone) {
+    if (phone.isEmpty) return '--';
+    if (phone.length <= 4) return phone;
+    return '${phone.substring(0, 2)}${'*' * (phone.length - 4)}${phone.substring(phone.length - 2)}';
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final filtered = _tab == 0 ? leads : leads.where((l) => l['status'] == tabs[_tab]).toList();
+    final cpData = Provider.of<BookingProvider>(context).cpDashboardData;
+    final projectWiseData = (cpData?['projectWiseData'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? const [];
+
+    final visits = <Map<String, String>>[];
+    for (final p in projectWiseData) {
+      final projectName = (p['projectName'] as String?) ?? '--';
+      final customers = (p['walkInCustomers'] as List<dynamic>?) ?? const [];
+      for (final c in customers) {
+        final m = c as Map<String, dynamic>;
+        final rawDate = (m['visitDate'] as String?) ?? '';
+        visits.add({
+          'name': (m['customerName'] as String?) ?? '--',
+          'phone': (m['mobileNo'] as String?) ?? '',
+          'project': projectName,
+          'rawDate': rawDate,
+          'date': _fmtVisitDate(rawDate),
+          // 'visitId' is not yet returned by the SFDC cpDashboard API
+          // (walkInCustomers only has visitDate/mobileNo/email/customerName) —
+          // shows '--' until the backend adds a site visit ID field.
+          'visitId': (m['visitId'] as String?) ?? '--',
+        });
+      }
+    }
+    visits.sort((a, b) => b['rawDate']!.compareTo(a['rawDate']!));
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFFFF8F1),
       appBar: AppBar(
         backgroundColor: _bronze,
         leading: IconButton(icon: const Icon(Icons.menu_rounded, color: Colors.white), onPressed: () => widget.onOpenDrawer?.call()),
-        title: const Text('My Leads', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+        title: const Text('My Visits', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
         actions: [
-          IconButton(icon: const Icon(Icons.add, color: Colors.white), onPressed: () {}),
-          IconButton(icon: const Icon(Icons.notifications_outlined, color: Colors.white), onPressed: () {}),
+          IconButton(icon: const Icon(Icons.add, color: Colors.white), onPressed: () => _showAddLeadSheet(context)),
+          IconButton(icon: const Icon(Icons.notifications_outlined, color: Colors.white), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()))),
         ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-            child: Row(children: List.generate(tabs.length, (i) {
-              final isActive = _tab == i;
-              return GestureDetector(
-                onTap: () => setState(() => _tab = i),
-                child: Container(
-                  margin: const EdgeInsets.only(right: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: isActive ? _gold : Colors.white.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(20)),
-                  child: Text(tabs[i], style: TextStyle(
-                      color: isActive ? Colors.white : Colors.white70,
-                      fontSize: 12, fontWeight: FontWeight.w600))),
-              );
-            })),
-          ),
-        ),
       ),
-      body: ListView.builder(
+      body: visits.isEmpty
+          ? Center(
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(Icons.directions_walk_outlined, size: 48, color: Colors.grey[400]),
+                const SizedBox(height: 12),
+                Text('No walk-ins yet', style: TextStyle(color: Colors.grey[500], fontSize: 14)),
+              ]),
+            )
+          : ListView.builder(
         padding: const EdgeInsets.all(16),
-        itemCount: filtered.length,
+        itemCount: visits.length,
         itemBuilder: (_, i) {
-          final lead = filtered[i];
+          final v = visits[i];
           return Container(
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(16),
@@ -731,41 +781,34 @@ class _CPLeadsScreenState extends State<CPLeadsScreen> {
               Row(children: [
                 Container(width: 44, height: 44,
                   decoration: BoxDecoration(
-                    color: (lead['color'] as Color).withOpacity(0.1),
+                    color: _bronze.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(14)),
-                  child: Icon(Icons.person_outline, color: lead['color'] as Color, size: 22)),
+                  child: const Icon(Icons.directions_walk, color: _bronze, size: 22)),
                 const SizedBox(width: 12),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(lead['name'] as String, style: TextStyle(fontSize: 15,
+                  Text(v['name']!, style: TextStyle(fontSize: 15,
                       fontWeight: FontWeight.bold, color: isDark ? Colors.white : const Color(0xFF1A0A00))),
-                  Text(lead['phone'] as String, style: TextStyle(fontSize: 12,
+                  Text(_maskPhone(v['phone']!), style: TextStyle(fontSize: 12,
                       color: isDark ? Colors.white38 : Colors.grey[500])),
                 ])),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: (lead['color'] as Color).withOpacity(0.1),
+                    color: _gold.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: (lead['color'] as Color).withOpacity(0.3))),
-                  child: Text(lead['status'] as String, style: TextStyle(
-                      color: lead['color'] as Color, fontSize: 11, fontWeight: FontWeight.w600))),
+                    border: Border.all(color: _gold.withOpacity(0.3))),
+                  child: Text('Visit ID: ${v['visitId']}', style: const TextStyle(
+                      color: _bronze, fontSize: 11, fontWeight: FontWeight.w600))),
               ]),
               const SizedBox(height: 12),
               Row(children: [
-                _leadDetail(Icons.location_city_outlined, lead['project'] as String, isDark),
+                _leadDetail(Icons.location_city_outlined, v['project']!, isDark),
                 const SizedBox(width: 16),
-                _leadDetail(Icons.currency_rupee_outlined, lead['budget'] as String, isDark),
-                const SizedBox(width: 16),
-                _leadDetail(Icons.calendar_today_outlined, lead['date'] as String, isDark),
+                _leadDetail(Icons.calendar_today_outlined, v['date']!, isDark),
               ]),
               const SizedBox(height: 12),
-              Row(children: [
-                Expanded(child: _actionBtn(Icons.phone, 'Call', Colors.green)),
-                const SizedBox(width: 8),
-                Expanded(child: _expiryTag(lead['date'] as String)),
-                const SizedBox(width: 8),
-                Expanded(child: _actionBtn(Icons.edit_outlined, 'Update', _bronze)),
-              ]),
+              _actionBtn(Icons.phone, 'Call', Colors.green,
+                  onTap: v['phone']!.isEmpty ? null : () => launchUrl(Uri.parse('tel:${v['phone']}'))),
             ]),
           );
         },
@@ -773,8 +816,8 @@ class _CPLeadsScreenState extends State<CPLeadsScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddLeadSheet(context),
         backgroundColor: _bronze,
-        icon: const Icon(Icons.person_add_outlined, color: _gold),
-        label: const Text('Add Lead', style: TextStyle(color: _gold, fontWeight: FontWeight.w600)),
+        icon: const Icon(Icons.directions_walk, color: _gold),
+        label: const Text('Log Walk-In', style: TextStyle(color: _gold, fontWeight: FontWeight.w600)),
       ),
     );
   }
@@ -791,6 +834,8 @@ class _CPLeadsScreenState extends State<CPLeadsScreen> {
     final cpNameCtrl = TextEditingController();
     final smCtrl = TextEditingController();
     String? selectedStatus = 'Hot';
+    bool submitting = false;
+    String? formError;
 
     showModalBottomSheet(
       context: context,
@@ -811,9 +856,9 @@ class _CPLeadsScreenState extends State<CPLeadsScreen> {
               Row(children: [
                 Container(width: 36, height: 36,
                   decoration: BoxDecoration(color: _gold.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-                  child: const Icon(Icons.person_add_outlined, color: _gold, size: 20)),
+                  child: const Icon(Icons.directions_walk, color: _gold, size: 20)),
                 const SizedBox(width: 10),
-                Text('Add New Lead', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold,
+                Text('Log Walk-In', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold,
                     color: isDark ? Colors.white : const Color(0xFF1A0A00))),
               ]),
               const SizedBox(height: 20),
@@ -845,6 +890,20 @@ class _CPLeadsScreenState extends State<CPLeadsScreen> {
                         color: isSelected ? colors[s]! : Colors.grey,
                         fontWeight: FontWeight.w600))));
               }).toList()),
+              if (formError != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.red.withOpacity(0.3))),
+                  child: Row(children: [
+                    const Icon(Icons.error_outline, color: Colors.red, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(formError!, style: const TextStyle(color: Colors.red, fontSize: 12))),
+                  ])),
+              ],
               const SizedBox(height: 24),
               SizedBox(width: double.infinity,
                 child: ElevatedButton(
@@ -852,20 +911,43 @@ class _CPLeadsScreenState extends State<CPLeadsScreen> {
                     backgroundColor: _bronze,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-                  onPressed: () {
-                    final tag = '''*Project :- ${projectCtrl.text}*
-*Client Name :- ${clientNameCtrl.text}*
-Client No :- ${clientNoCtrl.text}
-*Configuration :* ${configCtrl.text}
-Budget :- ${budgetCtrl.text}
-CP Firm :- ${cpFirmCtrl.text}
-CP Name :- ${cpNameCtrl.text}
-SM :- ${smCtrl.text}''';
-                    Navigator.pop(context);
+                  onPressed: submitting ? null : () async {
+                    if (projectCtrl.text.trim().isEmpty ||
+                        clientNameCtrl.text.trim().isEmpty ||
+                        clientNoCtrl.text.trim().isEmpty) {
+                      setModalState(() => formError = 'Project, Client Name and Client No are required.');
+                      return;
+                    }
+                    setModalState(() { submitting = true; formError = null; });
+                    final provider = Provider.of<BookingProvider>(context, listen: false);
+                    final ok = await provider.submitCPWalkIn(
+                      project: projectCtrl.text.trim(),
+                      clientName: clientNameCtrl.text.trim(),
+                      clientPhone: clientNoCtrl.text.trim(),
+                      configuration: configCtrl.text.trim(),
+                      budget: budgetCtrl.text.trim(),
+                      cpFirm: cpFirmCtrl.text.trim(),
+                      cpName: cpNameCtrl.text.trim(),
+                      sourcingManager: smCtrl.text.trim(),
+                      status: selectedStatus,
+                    );
+                    if (!context.mounted) return;
+                    if (!ok) {
+                      setModalState(() {
+                        submitting = false;
+                        formError = provider.cpWalkInError ?? 'Could not save this walk-in. Please try again.';
+                      });
+                      return;
+                    }
+                    Navigator.pop(ctx);
+                    provider.refreshCPDashboard();
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Lead added!'), backgroundColor: _bronze));
+                      const SnackBar(content: Text('Walk-in logged!'), backgroundColor: _bronze));
                   },
-                  child: const Text('Submit Lead', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  child: submitting
+                      ? const SizedBox(height: 20, width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                      : const Text('Submit Walk-In', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                 )),
               const SizedBox(height: 12),
             ]),
@@ -910,53 +992,23 @@ SM :- ${smCtrl.text}''';
     ]);
   }
 
-  Widget _expiryTag(String visitDate) {
-    try {
-      final parts = visitDate.split(" ");
-      final dateParts = parts[0].split(" ");
-      // Parse date like "20 Jun 2026"
-      final months = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"May":5,"Jun":6,"Jul":7,"Aug":8,"Sep":9,"Oct":10,"Nov":11,"Dec":12};
-      final day = int.parse(visitDate.split(" ")[0]);
-      final month = months[visitDate.split(" ")[1]] ?? 1;
-      final year = int.parse(visitDate.split(" ")[2]);
-      final visit = DateTime(year, month, day);
-      final expiry = visit.add(const Duration(days: 45));
-      final now = DateTime.now();
-      final daysLeft = expiry.difference(now).inDays;
-      final isExpired = daysLeft < 0;
-      final isUrgent = daysLeft <= 7 && daysLeft >= 0;
-      final color = isExpired ? Colors.red : isUrgent ? Colors.orange : Colors.green;
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+  Widget _actionBtn(IconData icon, String label, Color color, {VoidCallback? onTap}) {
+    final enabled = onTap != null;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withOpacity(0.4))),
+          color: enabled ? color.withOpacity(0.1) : Colors.grey.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: enabled ? color.withOpacity(0.3) : Colors.grey.withOpacity(0.2))),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(isExpired ? Icons.warning_outlined : Icons.timer_outlined, color: color, size: 12),
+          Icon(icon, color: enabled ? color : Colors.grey, size: 14),
           const SizedBox(width: 4),
-          Flexible(child: Text(
-            isExpired ? 'Expired' : 'd left',
-            style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w700),
-            overflow: TextOverflow.ellipsis)),
-        ]));
-    } catch (e) {
-      return const SizedBox.shrink();
-    }
-  }
-
-  Widget _actionBtn(IconData icon, String label, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.3))),
-      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(icon, color: color, size: 14),
-        const SizedBox(width: 4),
-        Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
-      ]),
+          Text(label, style: TextStyle(color: enabled ? color : Colors.grey, fontSize: 11, fontWeight: FontWeight.w600)),
+        ]),
+      ),
     );
   }
 }
@@ -968,14 +1020,38 @@ class CPBookingsScreen extends StatelessWidget {
   static const _bronze = Color(0xFF543813);
   static const _gold = Color(0xFFD4AF37);
 
+  String _fmtDate(String iso) {
+    try {
+      final d = DateTime.parse(iso);
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return '${d.day} ${months[d.month - 1]} ${d.year}';
+    } catch (_) {
+      return iso.isEmpty ? '--' : iso;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bookings = [
-      {'client': 'Rajesh Kumar', 'project': 'Roswalt Zaiden', 'unit': 'A-1203', 'amount': 'Rs.1.2Cr', 'status': 'Approved', 'date': '15 Jun 2026'},
-      {'client': 'Sneha Joshi', 'project': 'Roswalt Ryla', 'unit': 'B-502', 'amount': 'Rs.85L', 'status': 'Pending', 'date': '10 Jun 2026'},
-      {'client': 'Mohan Das', 'project': 'Roswalt Raya', 'unit': 'C-301', 'amount': 'Rs.1.5Cr', 'status': 'Approved', 'date': '05 Jun 2026'},
-    ];
+    final cpData = Provider.of<BookingProvider>(context).cpDashboardData;
+    final projectWiseData = (cpData?['projectWiseData'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? const [];
+
+    final bookings = <Map<String, String>>[];
+    for (final p in projectWiseData) {
+      final projectName = (p['projectName'] as String?) ?? '--';
+      final customers = (p['bookingCustomers'] as List<dynamic>?) ?? const [];
+      for (final c in customers) {
+        final m = c as Map<String, dynamic>;
+        bookings.add({
+          'client': (m['customerName'] as String?) ?? '--',
+          'project': projectName,
+          'unit': (m['unitNo'] as String?) ?? '--',
+          'bookingNumber': (m['bookingNumber'] as String?) ?? '--',
+          'date': _fmtDate((m['bookingDate'] as String?) ?? ''),
+        });
+      }
+    }
+    bookings.sort((a, b) => b['date']!.compareTo(a['date']!));
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFFFF8F1),
@@ -983,61 +1059,67 @@ class CPBookingsScreen extends StatelessWidget {
         backgroundColor: _bronze,
         leading: IconButton(icon: const Icon(Icons.menu_rounded, color: Colors.white), onPressed: () => onOpenDrawer?.call()),
         title: const Text('My Bookings', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-        actions: [IconButton(icon: const Icon(Icons.notifications_outlined, color: Colors.white), onPressed: () {})],
+        actions: [IconButton(icon: const Icon(Icons.notifications_outlined, color: Colors.white), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())))],
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: bookings.length,
-        itemBuilder: (_, i) {
-          final b = bookings[i];
-          final isApproved = b['status'] == 'Approved';
-          return Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: _gold.withOpacity(0.2)),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 3))]),
-            child: Column(children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [Color(0xFF543813), Color(0xFF3A2509)]),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20))),
-                child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                  Text(b['project'] as String, style: const TextStyle(color: _gold,
-                      fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: isApproved ? Colors.green.withOpacity(0.2) : Colors.orange.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: isApproved ? Colors.green.withOpacity(0.4) : Colors.orange.withOpacity(0.4))),
-                    child: Text(b['status'] as String, style: TextStyle(
-                        color: isApproved ? Colors.green : Colors.orange,
-                        fontSize: 10, fontWeight: FontWeight.bold))),
-                ])),
-              Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(children: [
-                  Row(children: [
-                    const Icon(Icons.person_outline, size: 16, color: Colors.grey),
-                    const SizedBox(width: 8),
-                    Text(b['client'] as String, style: TextStyle(fontSize: 14,
-                        fontWeight: FontWeight.w600, color: isDark ? Colors.white : const Color(0xFF1A0A00))),
+      body: bookings.isEmpty
+          ? Center(
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(Icons.assignment_outlined, size: 48, color: Colors.grey[400]),
+                const SizedBox(height: 12),
+                Text('No bookings yet', style: TextStyle(color: Colors.grey[500], fontSize: 14)),
+              ]),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: bookings.length,
+              itemBuilder: (_, i) {
+                final b = bookings[i];
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: _gold.withOpacity(0.2)),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 3))]),
+                  child: Column(children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [Color(0xFF543813), Color(0xFF3A2509)]),
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(20))),
+                      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                        Text(b['project']!, style: const TextStyle(color: _gold,
+                            fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.green.withOpacity(0.4))),
+                          child: const Text('Booked', style: TextStyle(
+                              color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold))),
+                      ])),
+                    Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(children: [
+                        Row(children: [
+                          const Icon(Icons.person_outline, size: 16, color: Colors.grey),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(b['client']!, style: TextStyle(fontSize: 14,
+                              fontWeight: FontWeight.w600, color: isDark ? Colors.white : const Color(0xFF1A0A00)))),
+                        ]),
+                        const SizedBox(height: 8),
+                        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                          _bookingDetail('Unit', b['unit']!, isDark),
+                          _bookingDetail('Booking No.', b['bookingNumber']!, isDark),
+                          _bookingDetail('Date', b['date']!, isDark),
+                        ]),
+                      ]),
+                    ),
                   ]),
-                  const SizedBox(height: 8),
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    _bookingDetail('Unit', b['unit'] as String, isDark),
-                    _bookingDetail('Amount', b['amount'] as String, isDark),
-                    _bookingDetail('Date', b['date'] as String, isDark),
-                  ]),
-                ]),
-              ),
-            ]),
-          );
-        },
-      ),
+                );
+              },
+            ),
     );
   }
 
@@ -1064,15 +1146,26 @@ class CPProfileScreen extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? const Color(0xFF121212) : _cream;
 
+    final bookingProvider = Provider.of<BookingProvider>(context);
+    final cpData = bookingProvider.cpDashboardData;
+    String field(String key) {
+      final v = cpData?[key];
+      if (v == null) return '--';
+      final s = v.toString().trim();
+      return s.isEmpty ? '--' : s;
+    }
+    final cpName = field('cpName');
+    final mahaRera = bookingProvider.mahaRERA ?? '--';
+
     final details = [
-      {'icon': Icons.badge_outlined, 'label': 'PARTNER ID', 'value': 'CP-10021'},
-      {'icon': Icons.phone_outlined, 'label': 'MOBILE NUMBER', 'value': '+91 98765 43210'},
-      {'icon': Icons.email_outlined, 'label': 'EMAIL ADDRESS', 'value': 'rohit.verma@roswalt.com'},
-      {'icon': Icons.corporate_fare_outlined, 'label': 'COMPANY NAME', 'value': 'Dream Spaces'},
-      {'icon': Icons.receipt_long_outlined, 'label': 'GST NUMBER', 'value': '27ABCDE1234F1Z5'},
-      {'icon': Icons.credit_card_outlined, 'label': 'PAN NUMBER', 'value': 'ABCDE1234F'},
-      {'icon': Icons.location_on_outlined, 'label': 'REGISTERED CITY', 'value': 'Mumbai'},
-      {'icon': Icons.verified_outlined, 'label': 'MAHA RERA NO.', 'value': 'CP/RA/2024/12345'},
+      {'icon': Icons.badge_outlined, 'label': 'PARTNER ID', 'value': field('cpId')},
+      {'icon': Icons.phone_outlined, 'label': 'MOBILE NUMBER', 'value': field('Phone')},
+      {'icon': Icons.email_outlined, 'label': 'EMAIL ADDRESS', 'value': field('Email')},
+      {'icon': Icons.corporate_fare_outlined, 'label': 'COMPANY NAME', 'value': cpName},
+      {'icon': Icons.receipt_long_outlined, 'label': 'GST NUMBER', 'value': field('GstNumber')},
+      {'icon': Icons.credit_card_outlined, 'label': 'PAN NUMBER', 'value': field('PanNumber')},
+      {'icon': Icons.location_on_outlined, 'label': 'REGION', 'value': field('Location')},
+      {'icon': Icons.verified_outlined, 'label': 'MAHA RERA NO.', 'value': mahaRera},
     ];
 
     return Scaffold(
@@ -1123,7 +1216,7 @@ class CPProfileScreen extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 12),
-              Text('Rohit Verma', style: GoogleFonts.playfairDisplay(
+              Text(cpName == '--' ? 'Channel Partner' : cpName, style: GoogleFonts.playfairDisplay(
                   fontSize: 20, fontWeight: FontWeight.bold,
                   color: isDark ? Colors.white : const Color(0xFF1A0A00))),
               const SizedBox(height: 4),
@@ -1136,7 +1229,7 @@ class CPProfileScreen extends StatelessWidget {
                   color: _gold.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: _gold.withOpacity(0.35))),
-                child: Text('CP-10221', style: TextStyle(
+                child: Text(mahaRera, style: TextStyle(
                     fontSize: 11, fontWeight: FontWeight.w700,
                     color: _gold, letterSpacing: 1.5))),
             ]),
@@ -1209,6 +1302,145 @@ class CPProfileScreen extends StatelessWidget {
               ])),
           ),
           const SizedBox(height: 24),
+        ]),
+      ),
+    );
+  }
+}
+
+// ── CP ASSISTANCE (concerned Sourcing Manager) ──────────────────
+class CPAssistanceScreen extends StatelessWidget {
+  const CPAssistanceScreen({super.key});
+  static const _bronze = Color(0xFF543813);
+  static const _gold = Color(0xFFD4AF37);
+  static const _cream = Color(0xFFFFF8F1);
+
+  Future<void> _launch(BuildContext context, String? uri, String missingMessage) async {
+    if (uri == null || uri.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(missingMessage)));
+      return;
+    }
+    final ok = await launchUrl(Uri.parse(uri), mode: LaunchMode.externalApplication);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not open $uri')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? const Color(0xFF121212) : _cream;
+    final cardBg = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+
+    final cpData = Provider.of<BookingProvider>(context).cpDashboardData;
+    final projectWiseData = (cpData?['projectWiseData'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? const [];
+
+    // Group projects by their assigned Sourcing Manager (SFDC: cpPointOfContact).
+    final Map<String, Map<String, dynamic>> managers = {};
+    for (final p in projectWiseData) {
+      final name = (p['cpPointOfContact'] as String?)?.trim();
+      if (name == null || name.isEmpty) continue;
+      final entry = managers.putIfAbsent(name, () => {
+            'name': name,
+            'phone': p['cpPointOfContactPhone'] as String?,
+            'email': p['cpPointOfContactEmail'] as String?,
+            'projects': <String>[],
+          });
+      final projectName = (p['projectName'] as String?)?.trim();
+      final projects = entry['projects'] as List<String>;
+      if (projectName != null && projectName.isNotEmpty && !projects.contains(projectName)) {
+        projects.add(projectName);
+      }
+    }
+
+    return Scaffold(
+      backgroundColor: bg,
+      appBar: AppBar(
+        backgroundColor: _bronze,
+        title: const Text('Assistance', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+      ),
+      body: managers.isEmpty
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Icon(Icons.support_agent_outlined, size: 48, color: Colors.grey[400]),
+                  const SizedBox(height: 12),
+                  Text('No Sourcing Manager assigned yet', style: TextStyle(color: Colors.grey[500], fontSize: 14)),
+                ]),
+              ),
+            )
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Text('Your concerned Sourcing Manager for each project', style: TextStyle(
+                    fontSize: 12, color: isDark ? Colors.white54 : Colors.grey[600])),
+                const SizedBox(height: 14),
+                ...managers.values.map((m) {
+                  final phone = m['phone'] as String?;
+                  final email = m['email'] as String?;
+                  final projects = (m['projects'] as List<String>).join(', ');
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 14),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: _gold.withOpacity(0.2)),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 3))]),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        Container(width: 44, height: 44,
+                          decoration: BoxDecoration(shape: BoxShape.circle, color: _bronze.withOpacity(0.1)),
+                          child: const Icon(Icons.person, color: _bronze, size: 24)),
+                        const SizedBox(width: 12),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(m['name'] as String, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white : const Color(0xFF1A0A00))),
+                          const SizedBox(height: 2),
+                          Text('Sourcing Manager • $projects', style: TextStyle(fontSize: 11,
+                              color: isDark ? Colors.white54 : Colors.grey[600])),
+                        ])),
+                      ]),
+                      const SizedBox(height: 14),
+                      Row(children: [
+                        Expanded(child: _contactBtn(context, Icons.call, 'Call', Colors.green,
+                            phone != null && phone.isNotEmpty ? 'tel:$phone' : null)),
+                        const SizedBox(width: 10),
+                        Expanded(child: _contactBtn(context, Icons.chat, 'WhatsApp', const Color(0xFF25D366),
+                            phone != null && phone.isNotEmpty ? 'https://wa.me/$phone' : null)),
+                        const SizedBox(width: 10),
+                        Expanded(child: _contactBtn(context, Icons.email_outlined, 'Email', Colors.blue,
+                            email != null && email.isNotEmpty ? 'mailto:$email' : null)),
+                      ]),
+                      if ((phone == null || phone.isEmpty) && (email == null || email.isEmpty)) ...[
+                        const SizedBox(height: 10),
+                        Text('Contact details not available yet', style: TextStyle(fontSize: 11,
+                            color: Colors.orange[700], fontStyle: FontStyle.italic)),
+                      ],
+                    ]),
+                  );
+                }),
+              ],
+            ),
+    );
+  }
+
+  Widget _contactBtn(BuildContext context, IconData icon, String label, Color color, String? uri) {
+    final enabled = uri != null;
+    return GestureDetector(
+      onTap: () => _launch(context, uri, '$label not available yet'),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: enabled ? color.withOpacity(0.1) : Colors.grey.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: enabled ? color.withOpacity(0.3) : Colors.grey.withOpacity(0.2))),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, color: enabled ? color : Colors.grey, size: 20),
+          const SizedBox(height: 4),
+          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
+              color: enabled ? color : Colors.grey)),
         ]),
       ),
     );

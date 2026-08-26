@@ -2,10 +2,8 @@
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../providers/booking_provider.dart';
-import '../../theme/app_theme.dart';
 import '../client/client_shell.dart';
-import '../auth/booking_lookup_screen.dart';
-import '../tenant/tenant_shell.dart';
+import '../auth/login_screen.dart';
 import '../tenant/tenant_shell.dart';
 
 class BookingSelectionScreen extends StatelessWidget {
@@ -47,7 +45,7 @@ class BookingSelectionScreen extends StatelessWidget {
                     GestureDetector(
                       onTap: () => Navigator.pushAndRemoveUntil(
                         context,
-                        MaterialPageRoute(builder: (_) => const BookingLookupScreen()),
+                        MaterialPageRoute(builder: (_) => const LoginScreen()),
                         (route) => false,
                       ),
                       child: Container(

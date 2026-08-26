@@ -22,6 +22,7 @@ class BookingData {
   String get tower => towerName;
   final String status;
   final String phone;
+  final String email;
   // Fields from future API calls (defaults for now)
   final String floor;
   final String bhkType;
@@ -49,6 +50,7 @@ class BookingData {
     required this.towerName,
     required this.status,
     required this.phone,
+    this.email = '',
     this.floor = '--',
     this.bhkType = '--',
     this.bookingDate = '--',
@@ -102,6 +104,7 @@ class BookingData {
       towerName: json['towerName'] ?? '--',
       status: json['ApprovalStatus'] ?? json['status'] ?? '--',
       phone: phone,
+      email: json['Email'] ?? '',
       floor: json['Floor'] != null ? json['Floor'].toString() : '--',
       bhkType: json['FlatType'] ?? '--',
       carpetArea: json['CarpetArea'] != null ? json['CarpetArea'].toString() + ' sqft' : '--',
@@ -137,6 +140,7 @@ class BookingData {
       towerName: towerName,
       status: status,
       phone: phone,
+      email: email,
       floor: floor,
       bhkType: bhkType,
       bookingDate: bookingDate,
@@ -173,14 +177,16 @@ class BookingProvider extends ChangeNotifier {
   Future<String?> _getSfdcToken() async {
     try {
       final response = await http.post(
-        Uri.parse('$_sfdcBaseUrl/services/oauth2/token'),
+        Uri.parse('https://login.salesforce.com/services/oauth2/token'),
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: {
-          'grant_type': 'client_credentials',
+          'grant_type': 'password',
           'client_id': _clientId,
           'client_secret': _clientSecret,
+          'username': _demandsUsername,
+          'password': _demandsPassword,
         },
       );
       if (response.statusCode == 200) {
@@ -569,6 +575,110 @@ String _deriveStatus(String? dueDateStr) {
   Future<void> refreshCPDashboard() async {
     if (_mahaRERA == null) return;
     await loginCPWithMahaRERA(_mahaRERA!);
+  }
+
+  // ── Employee Lookup ──
+  // NOTE: 'services/apexrest/mobile/employeeLookup' does not exist on the
+  // SFDC org yet — this is the agreed contract for the backend team to
+  // build. Expected response: {"success": true, "data": {"name": "...",
+  // "employeeId": "...", "email": "..."}} or {"success": false, "message":
+  // "..."}. The app-side call is fully wired and will work as soon as that
+  // endpoint exists.
+  // Mock record for testing the Employee flow end-to-end while the real
+  // employeeLookup endpoint doesn't exist yet. Remove once SFDC ships it.
+  static const _mockEmployeePhone = '9321181236';
+  static const _mockEmployeeData = {
+    'name': 'Terrance Pen',
+    'employeeId': 'RZ-1001',
+    'email': 'terrancespen0285@gmail.com',
+  };
+
+  Future<Map<String, dynamic>?> lookupEmployeeByPhone(String phone) async {
+    _error = null;
+    final digits = phone.replaceAll(RegExp(r'\D'), '');
+    if (digits.endsWith(_mockEmployeePhone)) {
+      return Map<String, dynamic>.from(_mockEmployeeData);
+    }
+    try {
+      final token = await _getSfdcToken();
+      if (token == null) {
+        _error = 'Unable to connect. Please try again.';
+        return null;
+      }
+      final res = await http.get(
+        Uri.parse('$_sfdcBaseUrl/services/apexrest/mobile/employeeLookup?mobileNumber=$phone'),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true) return data['data'] as Map<String, dynamic>?;
+        _error = data['message'] ?? 'No employee record found for this number.';
+        return null;
+      }
+      _error = 'Server error (${res.statusCode}). Please try again.';
+      return null;
+    } catch (e) {
+      debugPrint('lookupEmployeeByPhone error: $e');
+      _error = 'Network error. Please check your connection.';
+      return null;
+    }
+  }
+
+  // ── CP Walk-In Submission ──
+  // NOTE: 'services/apexrest/mobile/cpWalkin' does not exist on the SFDC org
+  // yet (confirmed 404 with a valid token) — this is the agreed contract for
+  // the backend team to build. The app-side call is fully wired and will
+  // work as soon as that endpoint exists.
+  String? _cpWalkInError;
+  String? get cpWalkInError => _cpWalkInError;
+
+  Future<bool> submitCPWalkIn({
+    required String project,
+    required String clientName,
+    required String clientPhone,
+    String? configuration,
+    String? budget,
+    String? cpFirm,
+    String? cpName,
+    String? sourcingManager,
+    String? status,
+  }) async {
+    _cpWalkInError = null;
+    try {
+      final token = await _getSfdcToken();
+      if (token == null) {
+        _cpWalkInError = 'Unable to connect. Please try again.';
+        return false;
+      }
+      final res = await http.post(
+        Uri.parse('$_sfdcBaseUrl/services/apexrest/mobile/cpWalkin'),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'mahaRERA': _mahaRERA ?? '',
+          'project': project,
+          'clientName': clientName,
+          'clientPhone': clientPhone,
+          'configuration': configuration ?? '',
+          'budget': budget ?? '',
+          'cpFirm': cpFirm ?? '',
+          'cpName': cpName ?? '',
+          'sourcingManager': sourcingManager ?? '',
+          'status': status ?? 'Hot',
+        }),
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true) return true;
+        _cpWalkInError = data['message'] ?? 'Could not save this walk-in. Please try again.';
+        return false;
+      }
+      _cpWalkInError = 'Server error (${res.statusCode}). Please try again.';
+      return false;
+    } catch (e) {
+      debugPrint('submitCPWalkIn error: $e');
+      _cpWalkInError = 'Network error. Please check your connection.';
+      return false;
+    }
   }
 
 }

@@ -1,3 +1,4 @@
+import '../client/notifications_screen.dart';
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -23,7 +24,7 @@ class _TenantAssistanceScreenState extends State<TenantAssistanceScreen> {
       appBar: AppBar(
         backgroundColor: _bronze,
         title: const Text('Assistance', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-        actions: [IconButton(icon: const Icon(Icons.notifications_outlined, color: Colors.white), onPressed: () {})],
+        actions: [IconButton(icon: const Icon(Icons.notifications_outlined, color: Colors.white), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())))],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: SingleChildScrollView(

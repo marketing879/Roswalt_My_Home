@@ -1,3 +1,4 @@
+import 'notifications_screen.dart';
 
 import 'dart:io';
 import 'package:open_file/open_file.dart';
@@ -111,7 +112,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
           IconButton(
             icon: Icon(_searchQuery.isEmpty ? Icons.search : Icons.close, color: Colors.white),
             onPressed: () => setState(() { _searchQuery = ''; _searchController.clear(); })),
-          IconButton(icon: const Icon(Icons.notifications_outlined, color: Colors.white), onPressed: () {}),
+          IconButton(icon: const Icon(Icons.notifications_outlined, color: Colors.white), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()))),
         ],
       ),
 

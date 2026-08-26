@@ -51,7 +51,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyAYOlYOuAdVkw9Zt0A49oFobHZ_CvgYIas',
-    appId: '1:6671009037:android:4e25ccf60c7ea3c46ddc44',
+    appId: '1:6671009037:android:d73148e8521e6d3e6ddc44',
     messagingSenderId: '6671009037',
     projectId: 'roswalt-my-home',
     storageBucket: 'roswalt-my-home.firebasestorage.app',

@@ -1,0 +1,20 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // All data (including emailOtps) is only ever touched by Cloud Functions
+    // using the Admin SDK, which bypasses these rules. Deny all direct
+    // client access.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Employee Attendance/Leave/Smart-Band data: each signed-in employee
+    // (custom-token uid from the email OTP flow) can only read/write their
+    // own subtree. The nightly finalize Cloud Function uses the Admin SDK
+    // and bypasses this rule entirely.
+    match /employees/{uid}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}

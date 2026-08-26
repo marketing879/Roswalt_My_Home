@@ -159,11 +159,12 @@ class _ConstructionScreenState extends State<ConstructionScreen> {
                       itemBuilder: (_, i) {
                         final u = _filtered[i];
                         return _UpdateCard(
-                          update: u,
-                          isDark: isDark,
-                          ago: _ago(u.createdAt),
-                          onOpenYouTube: _openYouTube,
-                        );
+                            key: ValueKey(u.id),
+                            update: u,
+                            isDark: isDark,
+                            ago: _ago(u.createdAt),
+                            onOpenYouTube: _openYouTube,
+                          );
                       },
                     ),
                   )),
@@ -177,7 +178,7 @@ class _UpdateCard extends StatefulWidget {
   final bool isDark;
   final String ago;
   final Future<void> Function(String) onOpenYouTube;
-  const _UpdateCard({required this.update, required this.isDark, required this.ago, required this.onOpenYouTube});
+  const _UpdateCard({super.key, required this.update, required this.isDark, required this.ago, required this.onOpenYouTube});
   @override
   State<_UpdateCard> createState() => _UpdateCardState();
 }
@@ -187,11 +188,21 @@ class _UpdateCardState extends State<_UpdateCard> {
   bool _videoReady = false;
   bool _playing = false;
 
+  bool _videoError = false;
+  String? _videoErrorMessage;
   void _initVideo() {
-    _vpc = VideoPlayerController.networkUrl(Uri.parse(widget.update.youtubeUrl))
-      ..initialize().then((_) {
+    try {
+      _vpc = VideoPlayerController.networkUrl(Uri.parse(widget.update.youtubeUrl));
+      _vpc!.initialize().then((_) {
         if (mounted) setState(() { _videoReady = true; _vpc!.play(); _playing = true; });
+      }).catchError((e) {
+        debugPrint('Video init error: ' + e.toString());
+        if (mounted) setState(() { _videoError = true; _videoErrorMessage = e.toString(); });
       });
+    } catch (e) {
+      debugPrint('Video init sync error: ' + e.toString());
+      if (mounted) setState(() { _videoError = true; _videoErrorMessage = e.toString(); });
+    }
   }
 
   @override
@@ -232,7 +243,11 @@ class _UpdateCardState extends State<_UpdateCard> {
                   ),
                 )
               : GestureDetector(
-                  onTap: () { setState(() => _playing = true); _initVideo(); },
+                  onTap: () {
+                    if (_vpc != null || _videoError) return;
+                    setState(() => _playing = true);
+                    _initVideo();
+                  },
                   child: Container(
                     height: 200, color: const Color(0xFF0A0A0A),
                     child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [

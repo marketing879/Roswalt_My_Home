@@ -1,3 +1,4 @@
+import '../client/notifications_screen.dart';
 
 import 'package:flutter/material.dart';
 
@@ -52,7 +53,7 @@ class _TenantDocumentsScreenState extends State<TenantDocumentsScreen> {
       appBar: AppBar(
         backgroundColor: _bronze,
         title: const Text('Documents', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-        actions: [IconButton(icon: const Icon(Icons.notifications_outlined, color: Colors.white), onPressed: () {})],
+        actions: [IconButton(icon: const Icon(Icons.notifications_outlined, color: Colors.white), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())))],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: SingleChildScrollView(

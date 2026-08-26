@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.roswaltrealty.myhome",
+      "sha256_cert_fingerprints": [
+        "2E:5D:F2:E2:46:FA:5A:2F:7C:60:D8:BD:62:34:30:3B:8E:C0:C7:1A:03:01:A1:11:90:9F:A9:59:07:88:EF:99",
+        "80:1B:B8:E4:E5:53:59:48:E3:79:79:C6:68:23:4E:0D:C6:27:B6:01:52:F1:83:94:3C:7B:63:8D:6A:B3:A1:A0"
+      ]
+    }
+  }
+]
