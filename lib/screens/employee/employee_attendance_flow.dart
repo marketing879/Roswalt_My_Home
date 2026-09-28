@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../providers/employee_attendance_provider.dart';
 import 'employee_lost_band_screen.dart';
 
@@ -192,8 +193,27 @@ class EmployeeCheckInScreen extends StatelessWidget {
             Text('Location', style: TextStyle(fontSize: 11, color: isDark ? Colors.white38 : Colors.grey[500])),
             Text(attendance.officeLocation, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600,
                 color: isDark ? Colors.white : const Color(0xFF1A0A00))),
+            if (attendance.todayLatitude != null && attendance.todayLongitude != null) ...[
+              const SizedBox(height: 4),
+              GestureDetector(
+                onTap: () => launchUrl(Uri.parse(
+                    'https://www.google.com/maps/search/?api=1&query=${attendance.todayLatitude},${attendance.todayLongitude}')),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.location_on, size: 13, color: _bronze),
+                  const SizedBox(width: 4),
+                  Text('View GPS location on map', style: TextStyle(fontSize: 11.5, color: _bronze, decoration: TextDecoration.underline)),
+                ]),
+              ),
+            ] else if (attendance.locationError != null) ...[
+              const SizedBox(height: 4),
+              Text(attendance.locationError!, style: TextStyle(fontSize: 11, color: Colors.orange[800])),
+            ],
             const SizedBox(height: 8),
-            Text('You are marked present for today.', style: TextStyle(fontSize: 12, color: isDark ? Colors.white54 : Colors.grey[600])),
+            Text(attendance.isLateCheckInToday
+                    ? 'Checked in after 9:45 AM — marked late for today.'
+                    : 'You are marked present for today.',
+                style: TextStyle(fontSize: 12,
+                    color: attendance.isLateCheckInToday ? Colors.amber[800] : (isDark ? Colors.white54 : Colors.grey[600]))),
             const SizedBox(height: 28),
             SizedBox(width: double.infinity,
               child: ElevatedButton(
@@ -324,6 +344,7 @@ class _EmployeeAttendanceCalendarScreenState extends State<EmployeeAttendanceCal
   Color _statusColor(String status) {
     switch (status) {
       case 'present': return Colors.green;
+      case 'late': return Colors.amber;
       case 'halfDay': return Colors.orange;
       case 'absent': return Colors.red;
       case 'weeklyOff': return Colors.grey;
@@ -418,6 +439,7 @@ class _EmployeeAttendanceCalendarScreenState extends State<EmployeeAttendanceCal
               const SizedBox(height: 8),
               Wrap(spacing: 12, runSpacing: 4, alignment: WrapAlignment.center, children: [
                 _legend('Present', Colors.green, isDark),
+                _legend('Late', Colors.amber, isDark),
                 _legend('Half Day', Colors.orange, isDark),
                 _legend('Absent', Colors.red, isDark),
                 _legend('Weekly Off', Colors.grey, isDark),
@@ -441,6 +463,30 @@ class _EmployeeAttendanceCalendarScreenState extends State<EmployeeAttendanceCal
               ] else
                 Text(_statusLabel(attendance.statusFor(_selected)), style: TextStyle(fontSize: 13,
                     color: isDark ? Colors.white54 : Colors.grey[600])),
+              if (attendance.regularisationFor(_selected) != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(color: _gold.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.published_with_changes, size: 14, color: _bronze),
+                    const SizedBox(width: 6),
+                    Text(attendance.regularisationStepLabel(attendance.regularisationFor(_selected)!),
+                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: _bronze)),
+                  ]),
+                ),
+              ] else if (attendance.needsRegularisation(_selected)) ...[
+                const SizedBox(height: 12),
+                SizedBox(width: double.infinity,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(foregroundColor: _bronze, side: const BorderSide(color: _bronze),
+                        padding: const EdgeInsets.symmetric(vertical: 12)),
+                    onPressed: () => _showRegularisationSheet(context, _selected),
+                    icon: const Icon(Icons.edit_calendar_outlined, size: 16),
+                    label: const Text('Apply for Regularisation', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+              ],
             ]),
           ),
         ]),
@@ -448,9 +494,74 @@ class _EmployeeAttendanceCalendarScreenState extends State<EmployeeAttendanceCal
     );
   }
 
+  Future<void> _showRegularisationSheet(BuildContext context, DateTime date) async {
+    final reasonCtrl = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    String? error;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(color: cardBg,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20))),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Apply for Regularisation', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : const Color(0xFF1A0A00))),
+              const SizedBox(height: 4),
+              Text(_fmtSelectedDate(date), style: TextStyle(fontSize: 12, color: isDark ? Colors.white54 : Colors.grey[600])),
+              const SizedBox(height: 16),
+              TextField(
+                controller: reasonCtrl,
+                maxLines: 2,
+                style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1A0A00), fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: 'Reason (e.g. missed punch, remote work, band not synced)',
+                  hintStyle: TextStyle(color: Colors.grey[400], fontSize: 12.5),
+                  filled: true, fillColor: isDark ? const Color(0xFF121212) : _cream,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  contentPadding: const EdgeInsets.all(14),
+                ),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 10),
+                Text(error!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+              ],
+              const SizedBox(height: 18),
+              SizedBox(width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: _bronze, padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                  onPressed: () async {
+                    if (reasonCtrl.text.trim().isEmpty) {
+                      setSheetState(() => error = 'Please enter a reason.');
+                      return;
+                    }
+                    await Provider.of<EmployeeAttendanceProvider>(sheetContext, listen: false).applyRegularisation(
+                      date: date, reason: reasonCtrl.text.trim(),
+                    );
+                    if (sheetContext.mounted) Navigator.pop(sheetContext);
+                  },
+                  child: const Text('Submit', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
   String _statusLabel(String status) {
     switch (status) {
       case 'present': return 'Present';
+      case 'late': return 'Late';
       case 'halfDay': return 'Half Day';
       case 'absent': return 'Absent';
       case 'weeklyOff': return 'Weekly Off';

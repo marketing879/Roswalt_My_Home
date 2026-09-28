@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -10,6 +11,8 @@ import '../../services/otp_email_service.dart';
 import '../../services/banner_service.dart';
 import '../../providers/employee_attendance_provider.dart';
 import '../../providers/employee_lms_provider.dart';
+import '../../providers/notification_provider.dart';
+import '../client/notifications_screen.dart';
 import '../auth/login_screen.dart';
 import 'employee_dashboard_screen.dart';
 import 'employee_attendance_flow.dart';
@@ -80,7 +83,8 @@ String _driveOpenUrl(String folderId) => 'https://drive.google.com/drive/folders
 class EmployeeShell extends StatefulWidget {
   final String employeeName;
   final String? employeeId;
-  const EmployeeShell({super.key, required this.employeeName, this.employeeId});
+  final String? designation;
+  const EmployeeShell({super.key, required this.employeeName, this.employeeId, this.designation});
 
   @override
   State<EmployeeShell> createState() => _EmployeeShellState();
@@ -98,6 +102,10 @@ class _EmployeeShellState extends State<EmployeeShell> {
       if (!mounted) return;
       Provider.of<EmployeeAttendanceProvider>(context, listen: false)
           .load(employeeName: widget.employeeName, employeeId: widget.employeeId);
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        Provider.of<NotificationProvider>(context, listen: false).syncFromFirestore(uid);
+      }
     });
   }
 
@@ -123,11 +131,22 @@ class _EmployeeShellState extends State<EmployeeShell> {
         onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
         employeeName: widget.employeeName,
         employeeId: employeeId,
+        designation: widget.designation,
         onNavigate: (i) => setState(() => _currentIndex = i),
       ),
     ];
 
-    return Scaffold(
+    return PopScope(
+      // Prevents the system back gesture/button from popping this route
+      // straight back to the login/verification screen (which looked
+      // indistinguishable from being logged out). Back instead returns to
+      // the Dashboard tab first, matching standard bottom-nav app behavior;
+      // signing out is only ever done explicitly via the drawer.
+      canPop: _currentIndex == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) setState(() => _currentIndex = 0);
+      },
+      child: Scaffold(
       key: _scaffoldKey,
       drawer: Drawer(
         backgroundColor: isDark ? const Color(0xFF1A0A00) : _cream,
@@ -151,7 +170,9 @@ class _EmployeeShellState extends State<EmployeeShell> {
                   Text(widget.employeeName, maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 3),
-                  Text('Employee', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12)),
+                  Text((widget.designation?.isNotEmpty ?? false) ? widget.designation! : 'Employee',
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12)),
                 ])),
               ]),
               if (employeeId != null && employeeId.isNotEmpty) ...[
@@ -209,6 +230,7 @@ class _EmployeeShellState extends State<EmployeeShell> {
             ]),
           ),
         ),
+      ),
       ),
     );
   }
@@ -457,11 +479,20 @@ class _EmployeeCollateralScreenState extends State<EmployeeCollateralScreen> {
                   ),
                   const Text('ROSWALT', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800,
                       letterSpacing: 2, color: Colors.white)),
-                  _GlassPanel(
-                    isDark: isDark,
-                    borderRadius: BorderRadius.circular(10),
-                    padding: const EdgeInsets.all(8),
-                    child: const Icon(Icons.notifications_outlined, color: Colors.white, size: 20),
+                  GestureDetector(
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+                    child: Stack(clipBehavior: Clip.none, children: [
+                      _GlassPanel(
+                        isDark: isDark,
+                        borderRadius: BorderRadius.circular(10),
+                        padding: const EdgeInsets.all(8),
+                        child: const Icon(Icons.notifications_outlined, color: Colors.white, size: 20),
+                      ),
+                      if (Provider.of<NotificationProvider>(context).unreadCount > 0)
+                        Positioned(right: -2, top: -2, child: Container(
+                          width: 9, height: 9,
+                          decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle))),
+                    ]),
                   ),
                 ]),
               )),
@@ -578,8 +609,9 @@ class EmployeeProfileScreen extends StatelessWidget {
   final VoidCallback? onOpenDrawer;
   final String employeeName;
   final String? employeeId;
+  final String? designation;
   final ValueChanged<int>? onNavigate;
-  const EmployeeProfileScreen({super.key, this.onOpenDrawer, required this.employeeName, this.employeeId, this.onNavigate});
+  const EmployeeProfileScreen({super.key, this.onOpenDrawer, required this.employeeName, this.employeeId, this.designation, this.onNavigate});
 
   @override
   Widget build(BuildContext context) {
@@ -604,6 +636,10 @@ class EmployeeProfileScreen extends StatelessWidget {
             const SizedBox(height: 14),
             Text(employeeName, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold,
                 color: isDark ? Colors.white : const Color(0xFF1A0A00))),
+            if (designation != null && designation!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(designation!, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _gold)),
+            ],
             if (employeeId != null && employeeId!.isNotEmpty) ...[
               const SizedBox(height: 6),
               Text(employeeId!, style: TextStyle(fontSize: 13, color: isDark ? Colors.white54 : Colors.grey[600])),

@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 
 /// Employee Attendance/Leave/Smart-Band state, backed by Firestore
 /// (`employees/{uid}/...`) so check-ins, leave requests and band status are
@@ -27,9 +29,45 @@ class EmployeeAttendanceProvider extends ChangeNotifier {
   DateTime? todayCheckIn;
   DateTime? todayCheckOut;
   String officeLocation = 'Head Office, Mumbai';
+  double? todayLatitude;
+  double? todayLongitude;
+  String? _locationError;
+  String? get locationError => _locationError;
+
+  /// Best-effort GPS fix for check-in. Returns null (and sets
+  /// [locationError] with a user-facing reason) if location services are
+  /// off or permission isn't granted - check-in still proceeds either way,
+  /// it just won't have coordinates attached.
+  Future<Position?> _captureLocation() async {
+    _locationError = null;
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        _locationError = 'Location services are off. Enable GPS for location-tagged check-in.';
+        return null;
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        _locationError = 'Location permission denied. Check-in will proceed without a location tag.';
+        return null;
+      }
+      return await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 12)));
+    } catch (e) {
+      _locationError = 'Could not fetch location. Check-in will proceed without a location tag.';
+      return null;
+    }
+  }
 
   bool get isCheckedInToday => todayCheckIn != null;
   bool get isCheckedOutToday => todayCheckOut != null;
+  bool get isLateCheckInToday {
+    final t = todayCheckIn;
+    if (t == null) return false;
+    return t.hour > _presentCutoffHour || (t.hour == _presentCutoffHour && t.minute > _presentCutoffMinute);
+  }
 
   String get totalHoursToday {
     if (todayCheckIn == null) return '--';
@@ -90,21 +128,88 @@ class EmployeeAttendanceProvider extends ChangeNotifier {
       todayCheckIn = (a['checkIn'] as Timestamp?)?.toDate();
       todayCheckOut = (a['checkOut'] as Timestamp?)?.toDate();
       officeLocation = (a['location'] as String?) ?? officeLocation;
+      todayLatitude = (a['latitude'] as num?)?.toDouble();
+      todayLongitude = (a['longitude'] as num?)?.toDouble();
     }
 
     final historySnap = await doc.collection('leaveRequests').orderBy('requestedAt', descending: true).limit(50).get();
     leaveHistory
       ..clear()
-      ..addAll(historySnap.docs.map((d) => {
-            'id': d.id,
-            'type': d['type'],
-            'dateLabel': d['dateLabel'],
-            'days': d['days'],
-            'status': d['status'],
+      ..addAll(historySnap.docs.map((d) {
+            final data = d.data();
+            return {
+              'id': d.id,
+              'type': data['type'],
+              'dateLabel': data['dateLabel'],
+              'days': data['days'],
+              'status': data['status'],
+              if (data['mode'] != null) 'mode': data['mode'],
+              if (data['buddyName'] != null) 'buddyName': data['buddyName'],
+              if (data['buddyEmployeeId'] != null) 'buddyEmployeeId': data['buddyEmployeeId'],
+              if (data['buddyStatus'] != null) 'buddyStatus': data['buddyStatus'],
+            };
           }));
+
+    final regSnap = await doc.collection('regularisations').orderBy('requestedAt', descending: true).limit(50).get();
+    regularisations
+      ..clear()
+      ..addAll(regSnap.docs.map((d) => {'id': d.id, ...d.data()}));
 
     await _loadMonthAttendanceStats(today);
     _loaded = true;
+    notifyListeners();
+  }
+
+  // ── Regularisation (missed punch / late / remote / band not synced) ──
+  // 4-step flow per spec: Reminder (systemic, before applying) → Applied →
+  // Buddy consent → TL/HOD decision. `step` here tracks steps completed by
+  // the employee's own action (Applied = 2); buddy consent and the
+  // TL/HOD decision are recorded once that admin-side flow exists to move
+  // them, same as leave's buddyStatus.
+  final List<Map<String, dynamic>> regularisations = [];
+
+  static const _regularisableStatuses = {'late', '', 'absent'};
+
+  /// A past working day with no regularisation on file yet, and a status
+  /// that actually needs one (missed punch, late, or no capture at all).
+  bool needsRegularisation(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final d = DateTime(date.year, date.month, date.day);
+    if (!d.isBefore(today) && d != today) return false;
+    if (date.weekday == DateTime.sunday) return false;
+    if (!_regularisableStatuses.contains(statusFor(date))) return false;
+    return regularisationFor(date) == null;
+  }
+
+  Map<String, dynamic>? regularisationFor(DateTime date) {
+    final key = _dateKey(date);
+    for (final r in regularisations) {
+      if (r['dateKey'] == key) return r;
+    }
+    return null;
+  }
+
+  /// Step completed so far, or "Closed" once the TL/HOD has decided.
+  String regularisationStepLabel(Map<String, dynamic> r) {
+    final status = r['status'] as String? ?? 'Open';
+    if (status == 'Approved' || status == 'Rejected') return 'Closed';
+    return 'Applied · Awaiting TL / HOD decision';
+  }
+
+  Future<void> applyRegularisation({
+    required DateTime date,
+    required String reason,
+  }) async {
+    final doc = _employeeDoc;
+    if (doc == null) return;
+    final dateKey = _dateKey(date);
+    final data = {
+      'dateKey': dateKey, 'dateLabel': _fmtDate(date), 'reason': reason,
+      'status': 'Open', 'requestedAt': FieldValue.serverTimestamp(),
+    };
+    final ref = await doc.collection('regularisations').add(data);
+    regularisations.insert(0, {'id': ref.id, ...data, 'requestedAt': Timestamp.now()});
     notifyListeners();
   }
 
@@ -124,19 +229,31 @@ class EmployeeAttendanceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Smart-band punch cutoff: in before 9:45 AM = present, after = late.
+  static const _presentCutoffHour = 9;
+  static const _presentCutoffMinute = 45;
+
   Future<void> checkIn() async {
     final doc = _employeeDoc;
     if (doc == null) return;
     final now = DateTime.now();
+    final isLate = now.hour > _presentCutoffHour ||
+        (now.hour == _presentCutoffHour && now.minute > _presentCutoffMinute);
+    final status = isLate ? 'late' : 'present';
+    final position = await _captureLocation();
     todayCheckIn = now;
+    todayLatitude = position?.latitude;
+    todayLongitude = position?.longitude;
     await doc.collection('attendance').doc(_dateKey(now)).set({
       'date': _dateKey(now),
       'checkIn': Timestamp.fromDate(now),
-      'status': 'present',
+      'status': status,
       'location': officeLocation,
+      if (position != null) 'latitude': position.latitude,
+      if (position != null) 'longitude': position.longitude,
       'finalized': false,
     }, SetOptions(merge: true));
-    _attendanceStatus[_dateKey(now)] = 'present';
+    _attendanceStatus[_dateKey(now)] = status;
     notifyListeners();
   }
 
@@ -220,8 +337,25 @@ class EmployeeAttendanceProvider extends ChangeNotifier {
     'Sick Leave': [6, 0],
     'Earned Leave': [15, 5],
     'Comp Off': [6, 2],
-    'Maternity Leave': [60, 0],
+    'Leave Without Pay': [0, 0],
+    'Work From Home': [0, 0],
+    'Work From Remote Location': [0, 0],
+    'Weekly Off': [0, 0],
+    'Declared Holidays': [0, 0],
   };
+
+  // Types with no fixed cap — balance card shows "As per Policy" instead of
+  // a used/total count. LWP has no cap since it's deducted in payroll, not
+  // allotted; WFH/WFR are marked, not counted against a quota; Weekly Off
+  // and Declared Holidays follow the roster/company calendar, not a
+  // per-year allotment.
+  static const uncappedLeaveTypes = {
+    'Leave Without Pay', 'Work From Home', 'Work From Remote Location', 'Weekly Off', 'Declared Holidays',
+  };
+
+  // Only Sick Leave may be applied for after the fact (spec: "SL — can be
+  // applied post-leave"); every other type must be requested in advance.
+  static const postLeaveAllowedTypes = {'Sick Leave'};
 
   int get totalLeaves => leaveBalances.values.fold(0, (s, v) => s + v[0]);
   int get usedLeaves => leaveBalances.values.fold(0, (s, v) => s + v[1]);
@@ -230,11 +364,29 @@ class EmployeeAttendanceProvider extends ChangeNotifier {
   // ── Leave History ──
   final List<Map<String, dynamic>> leaveHistory = [];
 
+  // ── Buddy picker (real employees, so decisions can actually notify them) ──
+  List<Map<String, String>>? _buddyOptionsCache;
+
+  Future<List<Map<String, String>>> fetchBuddyOptions() async {
+    if (_buddyOptionsCache != null) return _buddyOptionsCache!;
+    final result = await FirebaseFunctions.instance.httpsCallable('listStaffDirectory').call();
+    final staff = (result.data['staff'] as List).cast<Map>();
+    _buddyOptionsCache = staff
+        .map((s) => {'employeeId': (s['employeeId'] ?? '').toString(), 'name': (s['name'] ?? '').toString()})
+        .where((s) => s['employeeId']!.isNotEmpty && s['name']!.isNotEmpty)
+        .toList()
+      ..sort((a, b) => a['name']!.compareTo(b['name']!));
+    return _buddyOptionsCache!;
+  }
+
   Future<void> applyLeave({
     required String type,
     required DateTime from,
     required DateTime to,
     required String reason,
+    required String buddyEmployeeId,
+    required String buddyName,
+    String mode = 'Advance',
   }) async {
     final doc = _employeeDoc;
     if (doc == null) return;
@@ -246,10 +398,14 @@ class EmployeeAttendanceProvider extends ChangeNotifier {
     final ref = await doc.collection('leaveRequests').add({
       'type': type, 'fromDate': Timestamp.fromDate(from), 'toDate': Timestamp.fromDate(to),
       'days': days, 'reason': reason, 'status': 'Pending', 'dateLabel': dateLabel,
+      'mode': mode, 'buddyEmployeeId': buddyEmployeeId, 'buddyName': buddyName, 'buddyStatus': 'Awaiting',
       'requestedAt': FieldValue.serverTimestamp(),
     });
 
-    leaveHistory.insert(0, {'id': ref.id, 'type': type, 'dateLabel': dateLabel, 'days': days, 'status': 'Pending'});
+    leaveHistory.insert(0, {
+      'id': ref.id, 'type': type, 'dateLabel': dateLabel, 'days': days, 'status': 'Pending',
+      'mode': mode, 'buddyEmployeeId': buddyEmployeeId, 'buddyName': buddyName, 'buddyStatus': 'Awaiting',
+    });
     if (leaveBalances.containsKey(type)) {
       leaveBalances[type]![1] += days;
       await doc.collection('meta').doc('leaveBalances').set(
@@ -273,5 +429,6 @@ class EmployeeAttendanceProvider extends ChangeNotifier {
     presentDaysThisMonth = 0;
     totalMinutesThisMonth = 0;
     leaveHistory.clear();
+    regularisations.clear();
   }
 }

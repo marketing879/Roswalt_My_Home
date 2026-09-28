@@ -24,10 +24,12 @@ class OtpEmailService {
   static const _prefsEmailKey = 'verified_email';
   static const _prefsEmployeeNameKey = 'verified_employee_name';
   static const _prefsEmployeeIdKey = 'verified_employee_id';
+  static const _prefsEmployeeDesignationKey = 'verified_employee_designation';
   final _functions = FirebaseFunctions.instance;
   String? _verifiedEmail;
   String? _employeeName;
   String? _employeeId;
+  String? _employeeDesignation;
 
   // Only these codes come from our own HttpsError(...) calls in the Cloud
   // Function with a genuinely useful message. Anything else (e.g.
@@ -80,32 +82,38 @@ class OtpEmailService {
     _verifiedEmail = prefs.getString(_prefsEmailKey);
     _employeeName = prefs.getString(_prefsEmployeeNameKey);
     _employeeId = prefs.getString(_prefsEmployeeIdKey);
+    _employeeDesignation = prefs.getString(_prefsEmployeeDesignationKey);
   }
 
-  /// Caches the employee's name/ID alongside the verified email so a
-  /// relaunched app can restore straight into EmployeeShell without a
+  /// Caches the employee's name/ID/designation alongside the verified email
+  /// so a relaunched app can restore straight into EmployeeShell without a
   /// fresh SFDC lookup (custom-token users carry no profile fields).
-  Future<void> cacheEmployeeProfile(String name, String? employeeId) async {
+  Future<void> cacheEmployeeProfile(String name, String? employeeId, [String? designation]) async {
     _employeeName = name;
     _employeeId = employeeId;
+    _employeeDesignation = designation;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefsEmployeeNameKey, name);
     if (employeeId != null) await prefs.setString(_prefsEmployeeIdKey, employeeId);
+    if (designation != null) await prefs.setString(_prefsEmployeeDesignationKey, designation);
   }
 
   bool get isVerified => FirebaseAuth.instance.currentUser != null;
   String? get verifiedEmail => _verifiedEmail;
   String? get cachedEmployeeName => _employeeName;
   String? get cachedEmployeeId => _employeeId;
+  String? get cachedEmployeeDesignation => _employeeDesignation;
 
   Future<void> signOut() async {
     await FirebaseAuth.instance.signOut();
     _verifiedEmail = null;
     _employeeName = null;
     _employeeId = null;
+    _employeeDesignation = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_prefsEmailKey);
     await prefs.remove(_prefsEmployeeNameKey);
     await prefs.remove(_prefsEmployeeIdKey);
+    await prefs.remove(_prefsEmployeeDesignationKey);
   }
 }

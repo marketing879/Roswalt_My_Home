@@ -806,9 +806,6 @@ class _CPLeadsScreenState extends State<CPLeadsScreen> {
                 const SizedBox(width: 16),
                 _leadDetail(Icons.calendar_today_outlined, v['date']!, isDark),
               ]),
-              const SizedBox(height: 12),
-              _actionBtn(Icons.phone, 'Call', Colors.green,
-                  onTap: v['phone']!.isEmpty ? null : () => launchUrl(Uri.parse('tel:${v['phone']}'))),
             ]),
           );
         },
@@ -992,25 +989,6 @@ class _CPLeadsScreenState extends State<CPLeadsScreen> {
     ]);
   }
 
-  Widget _actionBtn(IconData icon, String label, Color color, {VoidCallback? onTap}) {
-    final enabled = onTap != null;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          color: enabled ? color.withOpacity(0.1) : Colors.grey.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: enabled ? color.withOpacity(0.3) : Colors.grey.withOpacity(0.2))),
-        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(icon, color: enabled ? color : Colors.grey, size: 14),
-          const SizedBox(width: 4),
-          Text(label, style: TextStyle(color: enabled ? color : Colors.grey, fontSize: 11, fontWeight: FontWeight.w600)),
-        ]),
-      ),
-    );
-  }
 }
 
 // ── CP BOOKINGS ───────────────────────────────────────────────

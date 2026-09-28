@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -88,6 +89,42 @@ class NotificationProvider extends ChangeNotifier {
     }
     notifyListeners();
     await _persist();
+  }
+
+  /// Pulls the durable server-side history from
+  /// `employees/{uid}/notifications` (written by Cloud Functions, e.g. leave
+  /// / regularisation decisions) and merges it into the local list, so the
+  /// panel always reflects these events even if the push itself was missed
+  /// (device offline, notification dismissed without tapping, app killed).
+  Future<void> syncFromFirestore(String uid) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('employees').doc(uid).collection('notifications')
+          .orderBy('createdAt', descending: true).limit(50).get();
+
+      final existingIds = _notifications.map((n) => n.id).toSet();
+      var changed = false;
+      for (final d in snap.docs) {
+        if (existingIds.contains(d.id)) continue;
+        final data = d.data();
+        _notifications.add(AppNotification(
+          id: d.id,
+          title: (data['title'] as String?) ?? 'Notification',
+          body: (data['body'] as String?) ?? '',
+          receivedAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+          data: Map<String, dynamic>.from(data['data'] ?? {}),
+          read: (data['read'] as bool?) ?? false,
+        ));
+        changed = true;
+      }
+      if (changed) {
+        _notifications.sort((a, b) => b.receivedAt.compareTo(a.receivedAt));
+        notifyListeners();
+        await _persist();
+      }
+    } catch (e) {
+      debugPrint('NotificationProvider syncFromFirestore error: ' + e.toString());
+    }
   }
 
   Future<void> markAllRead() async {

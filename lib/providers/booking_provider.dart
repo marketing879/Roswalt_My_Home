@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import '../config/secrets.dart' as secrets;
 
 // ── SFDC CONFIG (loaded from gitignored lib/config/secrets.dart) ──
@@ -584,21 +585,26 @@ String _deriveStatus(String? dueDateStr) {
   // "employeeId": "...", "email": "..."}} or {"success": false, "message":
   // "..."}. The app-side call is fully wired and will work as soon as that
   // endpoint exists.
-  // Mock record for testing the Employee flow end-to-end while the real
-  // employeeLookup endpoint doesn't exist yet. Remove once SFDC ships it.
-  static const _mockEmployeePhone = '9321181236';
-  static const _mockEmployeeData = {
-    'name': 'Terrance Pen',
-    'employeeId': 'RZ-1001',
-    'email': 'terrancespen0285@gmail.com',
-  };
-
   Future<Map<String, dynamic>?> lookupEmployeeByPhone(String phone) async {
     _error = null;
     final digits = phone.replaceAll(RegExp(r'\D'), '');
-    if (digits.endsWith(_mockEmployeePhone)) {
-      return Map<String, dynamic>.from(_mockEmployeeData);
+
+    // Org-wide staff directory (Firestore, looked up server-side via this
+    // callable so the directory itself is never exposed to unauthenticated
+    // clients) — populated with name/designation for everyone, phone/email
+    // filled in as they're provided. Once a record has a matching phone and
+    // loginEnabled=true, this lets that person log in without waiting on
+    // the real SFDC employeeLookup endpoint to exist.
+    try {
+      final result = await FirebaseFunctions.instance.httpsCallable('lookupStaffByPhone').call({'phone': digits});
+      final data = result.data;
+      if (data is Map && data['found'] == true) {
+        return Map<String, dynamic>.from(data['data'] as Map);
+      }
+    } catch (e) {
+      debugPrint('staffDirectory lookup error: $e');
     }
+
     try {
       final token = await _getSfdcToken();
       if (token == null) {

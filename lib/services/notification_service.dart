@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import '../providers/notification_provider.dart';
@@ -73,11 +75,37 @@ class NotificationService {
       _provider?.addNotification(title: title, body: body, data: initialMessage.data);
     }
 
+    // Save this device's FCM token against the signed-in employee so Cloud
+    // Functions can push targeted alerts (e.g. leave/regularisation
+    // decisions) instead of only broadcast topics. Runs on every sign-in
+    // (login, or session restore on relaunch) and on token rotation.
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) await _saveTokenForUser(currentUser.uid);
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user != null) _saveTokenForUser(user.uid);
+    });
+    messaging.onTokenRefresh.listen((newToken) {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) _saveToken(uid, newToken);
+    });
+  }
+
+  Future<void> _saveTokenForUser(String uid) async {
     try {
-      final token = await messaging.getToken();
-      debugPrint('FCM device token: $token');
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null) await _saveToken(uid, token);
     } catch (e) {
       debugPrint('Error fetching FCM token: ' + e.toString());
+    }
+  }
+
+  Future<void> _saveToken(String uid, String token) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('employees').doc(uid).collection('meta').doc('fcm')
+          .set({'token': token, 'updatedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error saving FCM token: ' + e.toString());
     }
   }
 }

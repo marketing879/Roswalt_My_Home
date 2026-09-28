@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/employee_attendance_provider.dart';
+import '../../providers/notification_provider.dart';
+import '../client/notifications_screen.dart';
 import 'employee_lms_screen.dart';
 
 const _bronze = Color(0xFF543813);
@@ -40,10 +42,19 @@ class EmployeeDashboardScreen extends StatelessWidget {
                       border: Border.all(color: _gold.withOpacity(0.25))),
                   child: Icon(Icons.menu_rounded, color: isDark ? Colors.white : _bronze, size: 20)),
               ),
-              Container(padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: _gold.withOpacity(0.25))),
-                child: Icon(Icons.notifications_outlined, color: isDark ? Colors.white : _bronze, size: 20)),
+              GestureDetector(
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+                child: Stack(clipBehavior: Clip.none, children: [
+                  Container(padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: _gold.withOpacity(0.25))),
+                    child: Icon(Icons.notifications_outlined, color: isDark ? Colors.white : _bronze, size: 20)),
+                  if (Provider.of<NotificationProvider>(context).unreadCount > 0)
+                    Positioned(right: -2, top: -2, child: Container(
+                      width: 9, height: 9,
+                      decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle))),
+                ]),
+              ),
             ]),
             const SizedBox(height: 18),
             Text('Hello, $firstName 👋', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold,

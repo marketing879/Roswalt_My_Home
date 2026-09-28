@@ -17,7 +17,11 @@ const _leaveIcons = {
   'Sick Leave': Icons.local_hospital_outlined,
   'Earned Leave': Icons.savings_outlined,
   'Comp Off': Icons.swap_horiz,
-  'Maternity Leave': Icons.family_restroom_outlined,
+  'Leave Without Pay': Icons.money_off_outlined,
+  'Work From Home': Icons.home_work_outlined,
+  'Work From Remote Location': Icons.map_outlined,
+  'Weekly Off': Icons.weekend_outlined,
+  'Declared Holidays': Icons.celebration_outlined,
 };
 
 // ── LEAVE MANAGEMENT ───────────────────────────────────────────
@@ -63,7 +67,7 @@ class EmployeeLeaveManagementScreen extends StatelessWidget {
           const SizedBox(height: 10),
           Expanded(child: ListView(children: [
             ...attendance.leaveBalances.entries.map((e) {
-              final available = e.key == 'Maternity Leave' ? null : e.value[0] - e.value[1];
+              final available = EmployeeAttendanceProvider.uncappedLeaveTypes.contains(e.key) ? null : e.value[0] - e.value[1];
               return GestureDetector(
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EmployeeLeaveBalanceScreen())),
                 child: Container(
@@ -124,9 +128,11 @@ class EmployeeApplyLeaveScreen extends StatefulWidget {
 
 class _EmployeeApplyLeaveScreenState extends State<EmployeeApplyLeaveScreen> {
   String _type = 'Casual Leave';
+  String _mode = 'Advance';
   DateTime? _from;
   DateTime? _to;
   final _reasonCtrl = TextEditingController();
+  Map<String, String>? _buddy;
   bool _submitting = false;
   String? _error;
 
@@ -134,6 +140,71 @@ class _EmployeeApplyLeaveScreenState extends State<EmployeeApplyLeaveScreen> {
   void dispose() {
     _reasonCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickBuddy() async {
+    final attendance = Provider.of<EmployeeAttendanceProvider>(context, listen: false);
+    List<Map<String, String>> options;
+    try {
+      options = await attendance.fetchBuddyOptions();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not load staff list. Please try again.'), backgroundColor: Colors.red));
+      return;
+    }
+    if (!mounted) return;
+    final searchCtrl = TextEditingController();
+    final picked = await showModalBottomSheet<Map<String, String>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          final query = searchCtrl.text.trim().toLowerCase();
+          final filtered = query.isEmpty
+              ? options
+              : options.where((o) => o['name']!.toLowerCase().contains(query) || o['employeeId']!.toLowerCase().contains(query)).toList();
+          return Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+            child: SizedBox(
+              height: MediaQuery.of(sheetContext).size.height * 0.7,
+              child: Column(children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: TextField(
+                    controller: searchCtrl,
+                    onChanged: (_) => setSheetState(() {}),
+                    decoration: InputDecoration(
+                      hintText: 'Search by name or employee ID',
+                      prefixIcon: const Icon(Icons.search, size: 20),
+                      filled: true, fillColor: Colors.grey[100],
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: filtered.isEmpty
+                      ? const Center(child: Text('No matches'))
+                      : ListView.builder(
+                          itemCount: filtered.length,
+                          itemBuilder: (_, i) {
+                            final o = filtered[i];
+                            return ListTile(
+                              leading: const Icon(Icons.person_outline, color: _bronze),
+                              title: Text(o['name']!),
+                              subtitle: Text(o['employeeId']!),
+                              onTap: () => Navigator.pop(sheetContext, o),
+                            );
+                          },
+                        ),
+                ),
+              ]),
+            ),
+          );
+        },
+      ),
+    );
+    if (picked != null) setState(() => _buddy = picked);
   }
 
   Future<void> _pickDate({required bool isFrom}) async {
@@ -188,10 +259,39 @@ class _EmployeeApplyLeaveScreenState extends State<EmployeeApplyLeaveScreen> {
                 style: TextStyle(fontSize: 14, color: isDark ? Colors.white : const Color(0xFF1A0A00)),
                 dropdownColor: cardBg,
                 items: _leaveIcons.keys.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                onChanged: (v) => setState(() => _type = v ?? _type),
+                onChanged: (v) => setState(() {
+                  _type = v ?? _type;
+                  if (!EmployeeAttendanceProvider.postLeaveAllowedTypes.contains(_type)) _mode = 'Advance';
+                }),
               ),
             ),
           ),
+          const SizedBox(height: 16),
+          _label(isDark, 'Mode'),
+          Row(children: ['Advance', 'Post-leave'].map((m) {
+            final allowed = m == 'Advance' || EmployeeAttendanceProvider.postLeaveAllowedTypes.contains(_type);
+            final active = _mode == m;
+            return Expanded(
+              child: GestureDetector(
+                onTap: allowed ? () => setState(() => _mode = m) : null,
+                child: Container(
+                  margin: EdgeInsets.only(right: m == 'Advance' ? 8 : 0),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                      color: active ? _bronze : cardBg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: active ? _bronze : _gold.withOpacity(0.2))),
+                  child: Text(m, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600,
+                      color: active ? Colors.white : (allowed ? (isDark ? Colors.white70 : Colors.grey[700]) : Colors.grey[400]))),
+                ),
+              ),
+            );
+          }).toList()),
+          if (_mode == 'Post-leave')
+            Padding(padding: const EdgeInsets.only(top: 6),
+                child: Text('Only Sick Leave may be applied after the fact.',
+                    style: TextStyle(fontSize: 11, color: isDark ? Colors.white38 : Colors.grey[500]))),
           const SizedBox(height: 16),
           Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -227,6 +327,26 @@ class _EmployeeApplyLeaveScreenState extends State<EmployeeApplyLeaveScreen> {
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
               focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _gold)),
               contentPadding: const EdgeInsets.all(14),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _label(isDark, 'Buddy (for consent)'),
+          GestureDetector(
+            onTap: _pickBuddy,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _gold.withOpacity(0.2))),
+              child: Row(children: [
+                const Icon(Icons.person_outline, size: 18, color: _bronze),
+                const SizedBox(width: 10),
+                Expanded(child: Text(
+                    _buddy != null ? '${_buddy!['name']} (${_buddy!['employeeId']})' : "Select colleague who'll cover for you",
+                    style: TextStyle(fontSize: 13, color: _buddy != null
+                        ? (isDark ? Colors.white : const Color(0xFF1A0A00))
+                        : Colors.grey[400]))),
+                const Icon(Icons.keyboard_arrow_down_rounded, color: _bronze),
+              ]),
             ),
           ),
           const SizedBox(height: 16),
@@ -270,9 +390,14 @@ class _EmployeeApplyLeaveScreenState extends State<EmployeeApplyLeaveScreen> {
                   setState(() => _error = 'Please enter a reason.');
                   return;
                 }
+                if (_buddy == null) {
+                  setState(() => _error = 'Please select a buddy for consent.');
+                  return;
+                }
                 setState(() { _submitting = true; _error = null; });
                 await Provider.of<EmployeeAttendanceProvider>(context, listen: false).applyLeave(
                   type: _type, from: _from!, to: _to!, reason: _reasonCtrl.text.trim(),
+                  buddyEmployeeId: _buddy!['employeeId']!, buddyName: _buddy!['name']!, mode: _mode,
                 );
                 if (!context.mounted) return;
                 Navigator.pop(context);
@@ -327,6 +452,7 @@ class EmployeeLeaveBalanceScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: attendance.leaveBalances.entries.map((e) {
+          final uncapped = EmployeeAttendanceProvider.uncappedLeaveTypes.contains(e.key);
           final total = e.value[0];
           final used = e.value[1];
           final available = total - used;
@@ -344,12 +470,15 @@ class EmployeeLeaveBalanceScreen extends StatelessWidget {
                     color: isDark ? Colors.white : const Color(0xFF1A0A00))),
               ]),
               const SizedBox(height: 10),
-              ClipRRect(borderRadius: BorderRadius.circular(6),
-                child: LinearProgressIndicator(value: progress.clamp(0, 1), minHeight: 6,
-                    backgroundColor: _gold.withOpacity(0.12), color: _bronze)),
-              const SizedBox(height: 8),
-              Text('$available / $total Days Available',
-                  style: TextStyle(fontSize: 12, color: isDark ? Colors.white54 : Colors.grey[600])),
+              if (!uncapped) ...[
+                ClipRRect(borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(value: progress.clamp(0, 1), minHeight: 6,
+                      backgroundColor: _gold.withOpacity(0.12), color: _bronze)),
+                const SizedBox(height: 8),
+                Text('$available / $total Days Available',
+                    style: TextStyle(fontSize: 12, color: isDark ? Colors.white54 : Colors.grey[600])),
+              ] else
+                Text('As per Policy', style: TextStyle(fontSize: 12, color: isDark ? Colors.white54 : Colors.grey[600])),
             ]),
           );
         }).toList(),
@@ -373,6 +502,14 @@ class _EmployeeLeaveHistoryScreenState extends State<EmployeeLeaveHistoryScreen>
       case 'Approved': return Colors.green;
       case 'Rejected': return Colors.red;
       default: return Colors.orange;
+    }
+  }
+
+  Color _buddyStatusColor(String status) {
+    switch (status) {
+      case 'Consented': return Colors.green;
+      case 'Declined': return Colors.red;
+      default: return Colors.amber;
     }
   }
 
@@ -419,27 +556,43 @@ class _EmployeeLeaveHistoryScreenState extends State<EmployeeLeaveHistoryScreen>
                   itemCount: items.length,
                   itemBuilder: (_, i) {
                     final h = items[i];
+                    final buddyStatus = h['buddyStatus'] as String?;
                     return Container(
                       margin: const EdgeInsets.only(bottom: 10),
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(14),
                           border: Border.all(color: _gold.withOpacity(0.15))),
-                      child: Row(children: [
-                        Container(width: 36, height: 36,
-                          decoration: BoxDecoration(color: _bronze.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-                          child: Icon(_leaveIcons[h['type']] ?? Icons.event_note_outlined, color: _bronze, size: 18)),
-                        const SizedBox(width: 12),
-                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(h['type'] as String, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold,
-                              color: isDark ? Colors.white : const Color(0xFF1A0A00))),
-                          Text('${h['dateLabel']}  •  ${h['days']} Day${(h['days'] as int) > 1 ? 's' : ''}',
-                              style: TextStyle(fontSize: 11, color: isDark ? Colors.white38 : Colors.grey[500])),
-                        ])),
-                        Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(color: _statusColor(h['status'] as String).withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(8)),
-                          child: Text(h['status'] as String, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700,
-                              color: _statusColor(h['status'] as String)))),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(children: [
+                          Container(width: 36, height: 36,
+                            decoration: BoxDecoration(color: _bronze.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+                            child: Icon(_leaveIcons[h['type']] ?? Icons.event_note_outlined, color: _bronze, size: 18)),
+                          const SizedBox(width: 12),
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(h['type'] as String, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : const Color(0xFF1A0A00))),
+                            Text('${h['dateLabel']}  •  ${h['days']} Day${(h['days'] as int) > 1 ? 's' : ''}',
+                                style: TextStyle(fontSize: 11, color: isDark ? Colors.white38 : Colors.grey[500])),
+                          ])),
+                          Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(color: _statusColor(h['status'] as String).withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(8)),
+                            child: Text(h['status'] as String, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700,
+                                color: _statusColor(h['status'] as String)))),
+                        ]),
+                        if (buddyStatus != null) ...[
+                          const SizedBox(height: 8),
+                          Row(children: [
+                            Icon(Icons.people_outline, size: 13, color: isDark ? Colors.white38 : Colors.grey[500]),
+                            const SizedBox(width: 5),
+                            Expanded(child: Text('${h['buddyName'] ?? ''} · Buddy $buddyStatus',
+                                style: TextStyle(fontSize: 11, color: _buddyStatusColor(buddyStatus)))),
+                            if (h['mode'] == 'Post-leave')
+                              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(color: _gold.withOpacity(0.12), borderRadius: BorderRadius.circular(6)),
+                                child: Text('Post-leave', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: _bronze))),
+                          ]),
+                        ],
                       ]),
                     );
                   },

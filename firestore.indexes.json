@@ -7,6 +7,14 @@
         { "fieldPath": "date", "order": "ASCENDING" },
         { "fieldPath": "finalized", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "staffDirectory",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "phone", "order": "ASCENDING" },
+        { "fieldPath": "loginEnabled", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

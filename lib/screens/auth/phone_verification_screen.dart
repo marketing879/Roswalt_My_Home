@@ -50,6 +50,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   String _maskedId = '';
   String _realEmail = '';
   String _realName = '';
+  String _designation = '';
 
   @override
   void initState() {
@@ -98,6 +99,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
       final name = (employee['name'] as String?) ?? 'Employee';
       final email = (employee['email'] as String?) ?? '';
       final employeeId = (employee['employeeId'] as String?) ?? '';
+      final designation = (employee['designation'] as String?) ?? '';
       if (email.isEmpty) {
         setState(() => _errorMessage = 'No email on file for this employee. Please contact support.');
         return;
@@ -107,6 +109,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
         _realEmail = email;
         _displayId = employeeId;
         _maskedId = maskId(employeeId);
+        _designation = designation;
         _step = _Step.confirm;
       });
       return;
@@ -197,10 +200,10 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
     await Future.delayed(const Duration(milliseconds: 1200));
     if (!mounted) return;
     if (_isEmployee) {
-      await OtpEmailService.instance.cacheEmployeeProfile(_realName, _displayId);
+      await OtpEmailService.instance.cacheEmployeeProfile(_realName, _displayId, _designation);
       if (!mounted) return;
       Navigator.pushReplacement(context,
-          MaterialPageRoute(builder: (_) => EmployeeShell(employeeName: _realName, employeeId: _displayId)));
+          MaterialPageRoute(builder: (_) => EmployeeShell(employeeName: _realName, employeeId: _displayId, designation: _designation)));
       return;
     }
     final provider = Provider.of<BookingProvider>(context, listen: false);

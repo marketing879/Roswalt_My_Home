@@ -1,8 +1,10 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { onDocumentUpdated, onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
+const { getMessaging } = require('firebase-admin/messaging');
 const crypto = require('crypto');
 
 initializeApp();
@@ -109,6 +111,56 @@ exports.verifyEmailOtp = onCall(async (request) => {
   return { success: true, token };
 });
 
+// Looks up an employee by phone number in the org-wide staff directory
+// (staffDirectory), server-side only — the directory itself is never
+// exposed to unauthenticated clients. Only returns a match if that
+// person's record has loginEnabled=true (set once their phone/email are
+// filled in), so adding a name to the directory alone doesn't grant login.
+exports.lookupStaffByPhone = onCall(async (request) => {
+  const phone = String(request.data?.phone || '').replace(/\D/g, '');
+  if (!phone) {
+    throw new HttpsError('invalid-argument', 'A valid phone number is required.');
+  }
+
+  const snap = await db
+    .collection('staffDirectory')
+    .where('phone', '==', phone)
+    .where('loginEnabled', '==', 'true')
+    .limit(1)
+    .get();
+
+  if (snap.empty) {
+    return { found: false };
+  }
+
+  const d = snap.docs[0].data();
+  return {
+    found: true,
+    data: {
+      name: d.name,
+      employeeId: d.employeeId,
+      email: d.email,
+      designation: d.designation,
+    },
+  };
+});
+
+// Returns {employeeId, name} for every login-enabled staff member, so a
+// signed-in employee can pick a real colleague as their leave/regularisation
+// buddy (rather than typing a free-text name nobody can be notified at).
+// Requires auth; never exposed to unauthenticated clients. Only ~450
+// records today, so one full list per pick is simpler and cheap enough to
+// beat paginating a prefix search.
+exports.listStaffDirectory = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'You must be signed in.');
+  }
+  const snap = await db.collection('staffDirectory').where('loginEnabled', '==', 'true').get();
+  return {
+    staff: snap.docs.map((d) => ({ employeeId: d.data().employeeId, name: d.data().name })),
+  };
+});
+
 // Returns the given IST-offset day (e.g. -1 for "yesterday in IST") as a
 // 'YYYY-MM-DD' key, computed from UTC so it's correct regardless of which
 // region the function instance actually runs in.
@@ -154,3 +206,151 @@ exports.finalizeDailyAttendance = onSchedule(
     await batch.commit();
   }
 );
+
+// Writes a permanent record to employees/{uid}/notifications regardless of
+// whether the push itself is delivered (device offline, token missing, app
+// uninstalled, notification swiped away without tapping) - the in-app
+// Notifications panel reads this collection so history is never dependent
+// on transient FCM delivery.
+async function notifyEmployee(uid, title, body, data) {
+  await db.collection('employees').doc(uid).collection('notifications').add({
+    title, body, data: data || {}, read: false, createdAt: FieldValue.serverTimestamp(),
+  });
+
+  const tokenSnap = await db.collection('employees').doc(uid).collection('meta').doc('fcm').get();
+  const token = tokenSnap.data()?.token;
+  if (!token) return;
+  try {
+    await getMessaging().send({
+      token,
+      notification: { title, body },
+      data: Object.fromEntries(Object.entries(data || {}).map(([k, v]) => [k, String(v)])),
+    });
+  } catch (e) {
+    console.error('FCM send failed', e);
+  }
+}
+
+// Finds the uid of the employee doc holding a given employeeId (e.g.
+// "ASH-030"). Used to turn a real-world employee ID - a reporting manager,
+// or the employee picked as a leave/regularisation buddy - into the uid
+// needed to look up their FCM token.
+async function findUidByEmployeeId(employeeId) {
+  if (!employeeId) return null;
+  const snap = await db.collection('employees').where('employeeId', '==', employeeId).limit(1).get();
+  return snap.empty ? null : snap.docs[0].id;
+}
+
+// The reporting-manager mapping is maintained on the web admin side, not by
+// this app - it's expected as a `reportingManagerId` (employeeId string)
+// field on the employee's staffDirectory/{employeeId} doc.
+// The real mapping lives in reportingMap/{employeeId} (maintained by the
+// HRMS web admin), with separate tlId/hodId fields - NOT
+// staffDirectory.reportingManagerId, which doesn't exist. Prefers the TL;
+// falls back to the HOD if no TL is assigned, matching the spec's
+// TL-first-then-HOD-escalation pattern.
+async function findReportingManagerUid(employeeId) {
+  if (!employeeId) return null;
+  const mapSnap = await db.collection('reportingMap').doc(employeeId).get();
+  const managerId = mapSnap.data()?.tlId || mapSnap.data()?.hodId;
+  return managerId ? findUidByEmployeeId(managerId) : null;
+}
+
+async function notifyBuddy(buddyEmployeeId, title, body, data) {
+  const buddyUid = await findUidByEmployeeId(buddyEmployeeId);
+  if (buddyUid) await notifyEmployee(buddyUid, title, body, data);
+}
+
+// Pushes a notification to the employee (and their buddy, if named) the
+// moment a TL/HOD decides their leave request (status flips
+// Pending -> Approved/Rejected). The decision itself isn't made here - this
+// only fires once something else (the web admin, today) writes that status.
+exports.onLeaveRequestDecided = onDocumentUpdated('employees/{uid}/leaveRequests/{requestId}', async (event) => {
+  const before = event.data.before.data();
+  const after = event.data.after.data();
+  if (before.status === after.status) return;
+  if (after.status !== 'Approved' && after.status !== 'Rejected') return;
+
+  const employeeDoc = await db.collection('employees').doc(event.params.uid).get();
+  const employeeName = employeeDoc.data()?.name || 'An employee';
+
+  await notifyEmployee(
+    event.params.uid,
+    `Leave ${after.status}`,
+    `Your ${after.type} request (${after.dateLabel}) has been ${after.status.toLowerCase()}.`,
+    { type: 'leaveRequest', requestId: event.params.requestId, status: after.status },
+  );
+  if (after.buddyEmployeeId) {
+    await notifyBuddy(
+      after.buddyEmployeeId,
+      `Leave ${after.status}`,
+      `${employeeName}'s ${after.type} request (${after.dateLabel}), which you're the buddy for, has been ${after.status.toLowerCase()}.`,
+      { type: 'leaveRequest', requestId: event.params.requestId, status: after.status },
+    );
+  }
+});
+
+// Same as above, for regularisation requests (status Open -> Approved/Rejected).
+exports.onRegularisationDecided = onDocumentUpdated('employees/{uid}/regularisations/{requestId}', async (event) => {
+  const before = event.data.before.data();
+  const after = event.data.after.data();
+  if (before.status === after.status) return;
+  if (after.status !== 'Approved' && after.status !== 'Rejected') return;
+
+  const employeeDoc = await db.collection('employees').doc(event.params.uid).get();
+  const employeeName = employeeDoc.data()?.name || 'An employee';
+
+  await notifyEmployee(
+    event.params.uid,
+    `Regularisation ${after.status}`,
+    `Your regularisation request for ${after.dateLabel} has been ${after.status.toLowerCase()}.`,
+    { type: 'regularisation', requestId: event.params.requestId, status: after.status },
+  );
+  if (after.buddyEmployeeId) {
+    await notifyBuddy(
+      after.buddyEmployeeId,
+      `Regularisation ${after.status}`,
+      `${employeeName}'s regularisation request for ${after.dateLabel}, which you're the buddy for, has been ${after.status.toLowerCase()}.`,
+      { type: 'regularisation', requestId: event.params.requestId, status: after.status },
+    );
+  }
+});
+
+// Alerts the reporting manager the moment a new leave/regularisation
+// request is filed, so they know something is awaiting their decision.
+// Silently does nothing if the employee has no staffDirectory entry, or it
+// has no reportingManagerId set yet (see findReportingManagerUid above).
+exports.onLeaveRequestCreated = onDocumentCreated('employees/{uid}/leaveRequests/{requestId}', async (event) => {
+  const data = event.data.data();
+  const employeeDoc = await db.collection('employees').doc(event.params.uid).get();
+  const employeeId = employeeDoc.data()?.employeeId;
+  const employeeName = employeeDoc.data()?.name || 'An employee';
+  const managerUid = await findReportingManagerUid(employeeId);
+  if (!managerUid) return;
+  await notifyEmployee(
+    managerUid,
+    'Leave request awaiting your decision',
+    `${employeeName} applied for ${data.type} (${data.dateLabel}). Review it on the admin portal.`,
+    { type: 'leaveRequestPending', requestId: event.params.requestId, employeeUid: event.params.uid },
+  );
+});
+
+exports.onRegularisationCreated = onDocumentCreated('employees/{uid}/regularisations/{requestId}', async (event) => {
+  const data = event.data.data();
+  const employeeDoc = await db.collection('employees').doc(event.params.uid).get();
+  const employeeId = employeeDoc.data()?.employeeId;
+  const employeeName = employeeDoc.data()?.name || 'An employee';
+  const managerUid = await findReportingManagerUid(employeeId);
+  if (!managerUid) return;
+  await notifyEmployee(
+    managerUid,
+    'Regularisation request awaiting your decision',
+    `${employeeName} requested regularisation for ${data.dateLabel}. Review it on the admin portal.`,
+    { type: 'regularisationPending', requestId: event.params.requestId, employeeUid: event.params.uid },
+  );
+});
+
+// NOTE: the 6-hourly "mark leave / regularise" reminder is already handled
+// by adminRemindRegularisation in the separate HRMS web admin's own Cloud
+// Functions (same Firebase project, different codebase) - intentionally
+// NOT duplicated here to avoid double reminders.

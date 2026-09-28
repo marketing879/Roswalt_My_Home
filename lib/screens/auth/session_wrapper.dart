@@ -42,7 +42,8 @@ class _SessionWrapperState extends State<SessionWrapper> {
       Navigator.pushReplacement(context,
           MaterialPageRoute(builder: (_) => EmployeeShell(
               employeeName: employeeName,
-              employeeId: OtpEmailService.instance.cachedEmployeeId)));
+              employeeId: OtpEmailService.instance.cachedEmployeeId,
+              designation: OtpEmailService.instance.cachedEmployeeDesignation)));
       return;
     }
 
