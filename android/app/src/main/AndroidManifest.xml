@@ -17,6 +17,9 @@
         android:usesCleartextTraffic="true"
         android:requestLegacyExternalStorage="true">
         <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyCYLkqkzpEQ5ocGQyfI0k6ShZREZpPNlwE" />
+        <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="roswalt_updates_channel" />
         <meta-data

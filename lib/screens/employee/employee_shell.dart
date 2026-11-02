@@ -10,14 +10,17 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/otp_email_service.dart';
 import '../../services/banner_service.dart';
 import '../../providers/employee_attendance_provider.dart';
-import '../../providers/employee_lms_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../client/notifications_screen.dart';
 import '../auth/login_screen.dart';
 import 'employee_dashboard_screen.dart';
 import 'employee_attendance_flow.dart';
-import 'employee_leave_flow.dart';
-import 'employee_lms_screen.dart';
+import 'employee_team_field_screen.dart';
+import 'employee_tagged_leads_screen.dart';
+import 'employee_personal_details_screen.dart';
+import 'employee_bank_details_screen.dart';
+import 'employee_documents_screen.dart';
+import 'employee_training_videos_screen.dart';
 
 const _bronze = Color(0xFF543813);
 const _gold = Color(0xFFD4AF37);
@@ -62,6 +65,13 @@ const _projectOptions = [
   'Roswalt Zyon',
 ];
 
+const Map<String, List<Color>> _projectTileColors = {
+  'Roswalt Zaiden': [Color(0xFFD4AF37), Color(0xFF9C7A14)],
+  'Roswalt Ryla': [Color(0xFFC98E5A), Color(0xFF8F5A2C)],
+  'Roswalt Raya': [Color(0xFFA8875F), Color(0xFF6B5948)],
+  'Roswalt Zyon': [Color(0xFFE0A17A), Color(0xFFA8613A)],
+};
+
 // Employee collateral for each project lives in a shared Google Drive
 // folder (no CMS/API backend for this exists) — the app embeds the
 // folder's public "embeddedfolderview" so employees can browse/open files.
@@ -76,8 +86,8 @@ String _driveEmbedUrl(String folderId) => 'https://drive.google.com/embeddedfold
 String _driveOpenUrl(String folderId) => 'https://drive.google.com/drive/folders/$folderId';
 
 /// Employee module shell: drawer + bottom nav across Dashboard, Collateral,
-/// Attendance, Leave and Profile. No employee collateral/CMS, attendance,
-/// leave, or band-hardware backend exists yet, so every screen here runs on
+/// Smart Band and Profile. No employee collateral/CMS, attendance, or
+/// band-hardware backend exists yet, so every screen here runs on
 /// placeholder data — swap in real endpoints once they exist, the
 /// UI/navigation is already wired.
 class EmployeeShell extends StatefulWidget {
@@ -126,7 +136,6 @@ class _EmployeeShellState extends State<EmployeeShell> {
         onProjectChanged: (p) => setState(() => _selectedProject = p),
       ),
       EmployeeSmartBandScreen(onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer()),
-      EmployeeLeaveManagementScreen(onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer()),
       EmployeeProfileScreen(
         onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
         employeeName: widget.employeeName,
@@ -149,90 +158,165 @@ class _EmployeeShellState extends State<EmployeeShell> {
       child: Scaffold(
       key: _scaffoldKey,
       drawer: Drawer(
-        backgroundColor: isDark ? const Color(0xFF1A0A00) : _cream,
-        child: Column(children: [
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(0, 16, 16, 16),
+            child: ClipRRect(
+          borderRadius: BorderRadius.circular(32),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(32),
+                gradient: isDark
+                    ? LinearGradient(colors: [const Color(0xFF1A0A00).withOpacity(0.92), const Color(0xFF1A0A00).withOpacity(0.86)])
+                    : LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+                        colors: [Colors.white.withOpacity(0.86), _cream.withOpacity(0.72)]),
+                border: Border.all(color: Colors.white.withOpacity(0.6)),
+              ),
+              child: Column(children: [
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(20, 50, 20, 20),
             decoration: const BoxDecoration(
               gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
-                  colors: [Color(0xFF6B4A1E), _bronze, Color(0xFF3A2509)]),
+                  colors: [Color(0xFF8A6516), Color(0xFF5C4C3E)]),
             ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Container(width: 56, height: 56,
+            child: Stack(children: [
+              Positioned(right: -60, top: -60, child: Container(width: 200, height: 200,
                   decoration: BoxDecoration(shape: BoxShape.circle,
-                    color: _gold.withOpacity(0.15),
-                    border: Border.all(color: _gold.withOpacity(0.5), width: 2)),
-                  child: const Icon(Icons.badge_outlined, color: _gold, size: 28)),
-                const SizedBox(width: 14),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(widget.employeeName, maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 3),
-                  Text((widget.designation?.isNotEmpty ?? false) ? widget.designation! : 'Employee',
-                      maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12)),
-                ])),
+                      gradient: RadialGradient(colors: [_gold.withOpacity(0.35), _gold.withOpacity(0)])))),
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Container(width: 60, height: 60, padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(shape: BoxShape.circle,
+                      gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+                          colors: [Color(0xFFF5D97A), _gold, Color(0xFF8A6516)]),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 10)]),
+                    child: Container(
+                      decoration: const BoxDecoration(shape: BoxShape.circle,
+                          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+                              colors: [Color(0xFF6B4F10), Color(0xFF3F342B)])),
+                      alignment: Alignment.center,
+                      child: Text(_initials(widget.employeeName),
+                          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800))),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(widget.employeeName, maxLines: 2, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white, fontSize: 14.5, fontWeight: FontWeight.bold, height: 1.2)),
+                    const SizedBox(height: 3),
+                    Text((widget.designation?.isNotEmpty ?? false) ? widget.designation! : 'Employee',
+                        maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12)),
+                  ])),
+                ]),
+                if (employeeId != null && employeeId.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.16), borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white.withOpacity(0.35))),
+                    child: Text('ID · $employeeId', style: const TextStyle(color: Color(0xFFF5D97A), fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                  ),
+                ],
               ]),
-              if (employeeId != null && employeeId.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(color: _gold.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
-                  child: Text('ID: $employeeId', style: const TextStyle(color: _gold, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
-                ),
-              ],
             ]),
           ),
           Expanded(child: ListView(padding: const EdgeInsets.symmetric(vertical: 8), children: [
             _drawerItem(context, Icons.dashboard_outlined, 'Dashboard', () { setState(() => _currentIndex = 0); Navigator.pop(context); }, isDark, active: _currentIndex == 0),
             _drawerItem(context, Icons.campaign_outlined, 'Collateral', () { setState(() => _currentIndex = 1); Navigator.pop(context); }, isDark, active: _currentIndex == 1),
-            _drawerItem(context, Icons.event_available_outlined, 'Attendance', () { setState(() => _currentIndex = 2); Navigator.pop(context); }, isDark, active: _currentIndex == 2),
-            _drawerItem(context, Icons.beach_access_outlined, 'Leave', () { setState(() => _currentIndex = 3); Navigator.pop(context); }, isDark, active: _currentIndex == 3),
-            _drawerItem(context, Icons.school_outlined, 'Training (LMS)', () {
+            _drawerItem(context, Icons.play_circle_outline, 'Training Videos', () {
               Navigator.pop(context);
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const EmployeeLmsScreen()));
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const EmployeeTrainingVideosScreen()));
             }, isDark),
-            _drawerItem(context, Icons.settings_outlined, 'Settings', () {
+            _drawerItem(context, Icons.groups_outlined, 'My Team', () {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Settings coming soon.'), backgroundColor: _bronze));
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const EmployeeTeamFieldScreen()));
+            }, isDark),
+            _drawerItem(context, Icons.local_offer_outlined, 'My Tagged Leads', () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const EmployeeTaggedLeadsScreen()));
+            }, isDark),
+            _drawerItem(context, Icons.help_outline, 'Help & Support', () {
+              Navigator.pop(context);
+              showDialog(context: context, builder: (ctx) => AlertDialog(
+                title: const Text('Help & Support'),
+                content: const Text('For assistance, contact HR at hr@roswalt.com or call the office front desk.'),
+                actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close'))],
+              ));
             }, isDark),
             Divider(color: isDark ? Colors.white12 : _bronze.withOpacity(0.15)),
-            _drawerItem(context, Icons.person_outlined, 'Profile', () { setState(() => _currentIndex = 4); Navigator.pop(context); }, isDark, active: _currentIndex == 4),
+            _drawerItem(context, Icons.person_outlined, 'Profile', () { setState(() => _currentIndex = 3); Navigator.pop(context); }, isDark, active: _currentIndex == 3),
           ])),
-          _drawerItem(context, Icons.logout, 'Sign Out', () async {
-            Provider.of<EmployeeAttendanceProvider>(context, listen: false).reset();
-            Provider.of<EmployeeLmsProvider>(context, listen: false).reset();
-            await OtpEmailService.instance.signOut();
-            if (!context.mounted) return;
-            Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (r) => false);
-          }, isDark, color: Colors.red),
-          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 16),
+            child: GestureDetector(
+              onTap: () async {
+                Provider.of<EmployeeAttendanceProvider>(context, listen: false).reset();
+                await OtpEmailService.instance.signOut();
+                if (!context.mounted) return;
+                Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (r) => false);
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.red.withOpacity(0.25)),
+                ),
+                child: Row(children: [
+                  Icon(Icons.logout, size: 19, color: Colors.red[700]),
+                  const SizedBox(width: 12),
+                  Text('Sign out', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: Colors.red[700])),
+                ]),
+              ),
+            ),
+          ),
         ]),
-      ),
+              ),
+            ),
+          ),
+        ),
+          ),
+        ),
+      extendBody: true,
       body: screens[_currentIndex],
-      bottomNavigationBar: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(
-            decoration: BoxDecoration(
-              color: (isDark ? const Color(0xFF1A0A00) : _bronze).withOpacity(0.72),
-              border: Border(top: BorderSide(color: Colors.white.withOpacity(0.08))),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 12, offset: const Offset(0, -3))]),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-              _navItem(0, Icons.dashboard_outlined, Icons.dashboard, 'Dashboard'),
-              _navItem(1, Icons.campaign_outlined, Icons.campaign, 'Collateral'),
-              _navItem(2, Icons.event_available_outlined, Icons.event_available, 'Attendance'),
-              _navItem(3, Icons.beach_access_outlined, Icons.beach_access, 'Leave'),
-              _navItem(4, Icons.person_outlined, Icons.person, 'Profile'),
-            ]),
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(30),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+            child: Container(
+              decoration: BoxDecoration(
+                color: (isDark ? const Color(0xFF1A0A00) : Colors.white).withOpacity(isDark ? 0.45 : 0.55),
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(color: Colors.white.withOpacity(isDark ? 0.15 : 0.85)),
+                boxShadow: [BoxShadow(color: _bronze.withOpacity(0.2), blurRadius: 24, offset: const Offset(0, 10))]),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+              child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+                _navItem(0, Icons.dashboard_outlined, Icons.dashboard, 'Dashboard'),
+                _navItem(1, Icons.campaign_outlined, Icons.campaign, 'Collateral'),
+                _navItem(3, Icons.person_outlined, Icons.person, 'Profile'),
+              ]),
+            ),
           ),
         ),
       ),
       ),
     );
+  }
+
+  String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) return '';
+    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
+    return (parts.first.substring(0, 1) + parts.last.substring(0, 1)).toUpperCase();
   }
 
   Widget _drawerItem(BuildContext context, IconData icon, String label, VoidCallback onTap, bool isDark, {Color? color, bool active = false}) {
@@ -261,21 +345,24 @@ class _EmployeeShellState extends State<EmployeeShell> {
   }
 
   Widget _navItem(int index, IconData icon, IconData activeIcon, String label) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isActive = _currentIndex == index;
+    final inactiveColor = isDark ? Colors.white60 : _bronze.withOpacity(0.55);
     return GestureDetector(
       onTap: () => setState(() => _currentIndex = index),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        duration: const Duration(milliseconds: 220),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: isActive ? _gold.withOpacity(0.2) : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: isActive ? _gold.withOpacity(0.5) : Colors.transparent)),
+          gradient: isActive ? const LinearGradient(colors: [_gold, Color(0xFF9C7A14)]) : null,
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: isActive ? [BoxShadow(color: _gold.withOpacity(0.35), blurRadius: 14, offset: const Offset(0, 5))] : null,
+        ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(isActive ? activeIcon : icon, color: isActive ? _gold : Colors.white60, size: 22),
+          Icon(isActive ? activeIcon : icon, color: isActive ? Colors.white : inactiveColor, size: 21),
           const SizedBox(height: 3),
-          Text(label, style: TextStyle(fontSize: 10, fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
-              color: isActive ? _gold : Colors.white60)),
+          Text(label, style: TextStyle(fontSize: 9.5, fontWeight: isActive ? FontWeight.w800 : FontWeight.w500,
+              color: isActive ? Colors.white : inactiveColor)),
         ]),
       ),
     );
@@ -424,7 +511,12 @@ class _EmployeeCollateralScreenState extends State<EmployeeCollateralScreen> {
 
     return Scaffold(
       backgroundColor: bg,
-      body: Column(children: [
+      body: Stack(children: [
+        if (!isDark) ...[
+          Positioned(left: -90, top: 340, child: _champagneOrb(const Color(0xFFD4AF37), 300, 0.45)),
+          Positioned(right: -110, top: 560, child: _champagneOrb(const Color(0xFFE8A77A), 320, 0.35)),
+        ],
+        Column(children: [
         // Full-bleed hero banner (same size/treatment as Client & CP)
         SizedBox(
           height: 260,
@@ -477,8 +569,6 @@ class _EmployeeCollateralScreenState extends State<EmployeeCollateralScreen> {
                       child: const Icon(Icons.menu_rounded, color: Colors.white, size: 20),
                     ),
                   ),
-                  const Text('ROSWALT', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800,
-                      letterSpacing: 2, color: Colors.white)),
                   GestureDetector(
                     onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
                     child: Stack(clipBehavior: Clip.none, children: [
@@ -524,24 +614,41 @@ class _EmployeeCollateralScreenState extends State<EmployeeCollateralScreen> {
           child: showingAll
               ? ListView(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                  children: _employeeCollateralFolderIds.keys.map((p) => GestureDetector(
-                        onTap: () => widget.onProjectChanged?.call(p),
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: _gold.withOpacity(0.15))),
-                          child: Row(children: [
-                            Container(width: 46, height: 46,
-                              decoration: BoxDecoration(color: _bronze.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-                              child: const Icon(Icons.folder_outlined, color: _bronze, size: 22)),
-                            const SizedBox(width: 14),
-                            Expanded(child: Text(p, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold,
-                                color: isDark ? Colors.white : const Color(0xFF1A0A00)))),
-                            Icon(Icons.chevron_right, color: isDark ? Colors.white38 : Colors.grey[400]),
-                          ]),
+                  children: _employeeCollateralFolderIds.keys.map((p) {
+                    final tile = _projectTileColors[p] ?? const [Color(0xFFA8875F), Color(0xFF6B5948)];
+                    return GestureDetector(
+                      onTap: () => widget.onProjectChanged?.call(p),
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          gradient: isDark ? null : LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+                              colors: [Colors.white.withOpacity(0.72), Colors.white.withOpacity(0.32)]),
+                          color: isDark ? cardBg : null,
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: isDark ? _gold.withOpacity(0.15) : Colors.white.withOpacity(0.85)),
+                          boxShadow: isDark ? null : [BoxShadow(color: const Color(0xFF6B5948).withOpacity(0.15), blurRadius: 18, offset: const Offset(0, 8))],
                         ),
-                      )).toList(),
+                        child: Row(children: [
+                          Container(width: 50, height: 50,
+                            decoration: BoxDecoration(
+                                gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: tile),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.white.withOpacity(0.5)),
+                                boxShadow: [BoxShadow(color: tile.last.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 4))]),
+                            child: const Icon(Icons.folder_outlined, color: Colors.white, size: 22)),
+                          const SizedBox(width: 14),
+                          Expanded(child: Text(p, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800,
+                              color: isDark ? Colors.white : const Color(0xFF2B2520)))),
+                          Container(width: 32, height: 32,
+                            decoration: BoxDecoration(shape: BoxShape.circle,
+                                color: isDark ? Colors.white10 : Colors.white.withOpacity(0.7),
+                                border: Border.all(color: isDark ? Colors.white24 : Colors.white)),
+                            child: Icon(Icons.chevron_right, size: 18, color: isDark ? Colors.white54 : const Color(0xFF6B4F10))),
+                        ]),
+                      ),
+                    );
+                  }).toList(),
                 )
               : Stack(children: [
                   WebViewWidget(controller: _driveController),
@@ -564,6 +671,15 @@ class _EmployeeCollateralScreenState extends State<EmployeeCollateralScreen> {
                 ]),
         ),
       ]),
+      ]),
+    );
+  }
+
+  Widget _champagneOrb(Color color, double size, double opacity) {
+    return Container(
+      width: size, height: size,
+      decoration: BoxDecoration(shape: BoxShape.circle,
+          gradient: RadialGradient(colors: [color.withOpacity(opacity), color.withOpacity(0)])),
     );
   }
 
@@ -620,51 +736,102 @@ class EmployeeProfileScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
-        backgroundColor: _bronze,
-        leading: IconButton(icon: const Icon(Icons.menu_rounded, color: Colors.white), onPressed: onOpenDrawer),
-        title: const Text('Profile', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Center(child: Column(children: [
-            Container(width: 84, height: 84,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: _gold.withOpacity(0.12),
-                  border: Border.all(color: _gold.withOpacity(0.4), width: 2)),
-              child: const Icon(Icons.badge_outlined, color: _bronze, size: 40)),
-            const SizedBox(height: 14),
-            Text(employeeName, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : const Color(0xFF1A0A00))),
-            if (designation != null && designation!.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(designation!, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _gold)),
-            ],
-            if (employeeId != null && employeeId!.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(employeeId!, style: TextStyle(fontSize: 13, color: isDark ? Colors.white54 : Colors.grey[600])),
-            ],
-          ])),
-          const SizedBox(height: 28),
-          Expanded(child: ListView(children: [
-            _row(context, Icons.person_outline, 'Personal Details', isDark),
-            _row(context, Icons.description_outlined, 'My Documents', isDark),
-            _row(context, Icons.account_balance_outlined, 'Bank Details', isDark),
-            _row(context, Icons.watch_outlined, 'My Smart Band', isDark, onTap: () => onNavigate?.call(2)),
-            _row(context, Icons.school_outlined, 'Training (LMS)', isDark,
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EmployeeLmsScreen()))),
-            _row(context, Icons.lock_outline, 'Change Password', isDark),
-            _row(context, Icons.help_outline, 'Help & Support', isDark),
-            _row(context, Icons.logout, 'Sign Out', isDark, color: Colors.red, onTap: () async {
-              Provider.of<EmployeeAttendanceProvider>(context, listen: false).reset();
-              Provider.of<EmployeeLmsProvider>(context, listen: false).reset();
-              await OtpEmailService.instance.signOut();
-              if (!context.mounted) return;
-              Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (r) => false);
-            }),
-          ])),
-        ]),
-      ),
+      body: Stack(children: [
+        if (!isDark) ...[
+          Positioned(left: -90, top: 180, child: _champagneOrb(const Color(0xFFD4AF37), 320, 0.5)),
+          Positioned(right: -120, top: 420, child: _champagneOrb(const Color(0xFFE8A77A), 340, 0.4)),
+        ],
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                GestureDetector(
+                  onTap: onOpenDrawer,
+                  child: Container(width: 48, height: 48,
+                    decoration: BoxDecoration(
+                        color: isDark ? Colors.white10 : Colors.white.withOpacity(0.6),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: isDark ? Colors.white24 : Colors.white.withOpacity(0.85)),
+                        boxShadow: isDark ? null : [BoxShadow(color: const Color(0xFF6B5948).withOpacity(0.15), blurRadius: 18, offset: const Offset(0, 8))]),
+                    child: Icon(Icons.menu_rounded, color: isDark ? Colors.white : const Color(0xFF2B2520), size: 22)),
+                ),
+                const SizedBox(width: 14),
+                Text('Profile', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800,
+                    color: isDark ? Colors.white : const Color(0xFF2B2520))),
+              ]),
+              const SizedBox(height: 20),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+                      colors: [Color(0xFFB0862A), Color(0xFF6B5948)]),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(color: Colors.white.withOpacity(0.45)),
+                  boxShadow: [BoxShadow(color: const Color(0xFF6B5948).withOpacity(0.3), blurRadius: 24, offset: const Offset(0, 12))],
+                ),
+                child: Column(children: [
+                  Container(width: 84, height: 84,
+                    decoration: BoxDecoration(shape: BoxShape.circle,
+                        gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+                            colors: [Color(0xFFF5D97A), Color(0xFFD4AF37), Color(0xFF8A6516)]),
+                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 14)]),
+                    padding: const EdgeInsets.all(3),
+                    child: Container(
+                      decoration: const BoxDecoration(shape: BoxShape.circle,
+                          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+                              colors: [Color(0xFF8A6516), Color(0xFF5C4C3E)])),
+                      child: const Icon(Icons.badge_outlined, color: Colors.white, size: 36),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(employeeName, textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
+                  if (designation != null && designation!.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(designation!, textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white.withOpacity(0.85))),
+                  ],
+                  if (employeeId != null && employeeId!.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.18), borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: Colors.white.withOpacity(0.35))),
+                        child: Text(employeeId!, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFFF5D97A)))),
+                  ],
+                ]),
+              ),
+              const SizedBox(height: 20),
+              Expanded(child: ListView(children: [
+                _row(context, Icons.person_outline, 'Personal Details', isDark,
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EmployeePersonalDetailsScreen()))),
+                _row(context, Icons.description_outlined, 'My Documents', isDark,
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EmployeeDocumentsScreen()))),
+                _row(context, Icons.account_balance_outlined, 'Bank Details', isDark,
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EmployeeBankDetailsScreen()))),
+                _row(context, Icons.play_circle_outline, 'Training Videos', isDark,
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EmployeeTrainingVideosScreen()))),
+                const SizedBox(height: 8),
+                _row(context, Icons.logout, 'Sign Out', isDark, color: Colors.red, onTap: () async {
+                  Provider.of<EmployeeAttendanceProvider>(context, listen: false).reset();
+                  await OtpEmailService.instance.signOut();
+                  if (!context.mounted) return;
+                  Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (r) => false);
+                }),
+              ])),
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _champagneOrb(Color color, double size, double opacity) {
+    return Container(
+      width: size, height: size,
+      decoration: BoxDecoration(shape: BoxShape.circle,
+          gradient: RadialGradient(colors: [color.withOpacity(opacity), color.withOpacity(0)])),
     );
   }
 
@@ -676,9 +843,13 @@ class EmployeeProfileScreen extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _gold.withOpacity(0.15))),
+          gradient: isDark ? null : LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+              colors: [Colors.white.withOpacity(0.72), Colors.white.withOpacity(0.32)]),
+          color: isDark ? const Color(0xFF1E1E1E) : null,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: isDark ? _gold.withOpacity(0.15) : Colors.white.withOpacity(0.85)),
+          boxShadow: isDark ? null : [BoxShadow(color: const Color(0xFF6B5948).withOpacity(0.12), blurRadius: 14, offset: const Offset(0, 6))],
+        ),
         child: Row(children: [
           Icon(icon, size: 20, color: color ?? _bronze),
           const SizedBox(width: 14),

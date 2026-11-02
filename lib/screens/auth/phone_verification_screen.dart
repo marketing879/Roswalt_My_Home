@@ -55,7 +55,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   @override
   void initState() {
     super.initState();
-    _initVideo();
+    if (widget.accountType != AccountType.employee) _initVideo();
   }
 
   @override
@@ -221,18 +221,19 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
 
   Widget _errorBanner() {
     if (_errorMessage == null) return const SizedBox.shrink();
+    final light = _isEmployee;
     return Padding(
       padding: const EdgeInsets.only(top: 12),
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: Colors.red.withOpacity(0.15),
+          color: Colors.red.withOpacity(light ? 0.08 : 0.15),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: Colors.red.withOpacity(0.4))),
         child: Row(children: [
           const Icon(Icons.error_outline, color: Colors.red, size: 14),
           const SizedBox(width: 8),
-          Expanded(child: Text(_errorMessage!, style: const TextStyle(color: Colors.redAccent, fontSize: 12))),
+          Expanded(child: Text(_errorMessage!, style: TextStyle(color: light ? Colors.red[700] : Colors.redAccent, fontSize: 12))),
         ]),
       ),
     );
@@ -259,21 +260,28 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   }
 
   Widget _cardContent(bool isDark) {
+    final light = _isEmployee;
+    final fg = light ? const Color(0xFF2B2520) : Colors.white;
+    final fgMuted = light ? const Color(0xFF5C4C3E) : Colors.white.withOpacity(0.6);
+    final fieldBg = light ? Colors.white.withOpacity(0.55) : Colors.white.withOpacity(0.1);
+    final fieldBorder = light ? Colors.white.withOpacity(0.85) : Colors.white.withOpacity(0.2);
+    final hint = light ? const Color(0xFF8A7A66) : Colors.white.withOpacity(0.4);
+
     switch (_step) {
       case _Step.phone:
         return Column(children: [
           Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: fieldBg,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white.withOpacity(0.2))),
+              border: Border.all(color: fieldBorder)),
             child: TextField(
               controller: _phoneController,
               keyboardType: TextInputType.phone,
-              style: const TextStyle(color: Colors.white, fontSize: 16),
+              style: TextStyle(color: fg, fontSize: 16),
               decoration: InputDecoration(
                 hintText: 'Mobile Number',
-                hintStyle: TextStyle(color: Colors.white.withOpacity(0.4)),
+                hintStyle: TextStyle(color: hint),
                 prefixIcon: const Icon(Icons.phone_outlined, color: _gold, size: 20),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14)))),
@@ -290,19 +298,19 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
               border: Border.all(color: _gold.withOpacity(0.4), width: 2)),
             child: const Icon(Icons.person, color: _gold, size: 36)),
           const SizedBox(height: 16),
-          Text(_realName, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(_realName, style: TextStyle(color: fg, fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
           Text(_isEmployee ? 'Employee ID: $_maskedId' : 'Booking ID: $_maskedId',
-              style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13)),
+              style: TextStyle(color: fgMuted, fontSize: 13)),
           const SizedBox(height: 16),
-          const Text('Is this you?', style: TextStyle(color: Colors.white70, fontSize: 14)),
+          Text('Is this you?', style: TextStyle(color: fgMuted, fontSize: 14)),
           _errorBanner(),
           const SizedBox(height: 20),
           _primaryButton('YES, THIS IS ME', _sendOtp),
           const SizedBox(height: 10),
           TextButton(
             onPressed: _isLoading ? null : _confirmNo,
-            child: Text('No, use a different number', style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12))),
+            child: Text('No, use a different number', style: TextStyle(color: fgMuted, fontSize: 12))),
         ]);
 
       case _Step.otp:
@@ -311,25 +319,25 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
           const SizedBox(height: 12),
           Text('We sent a code to ${maskEmail(_realEmail)}',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 13)),
+              style: TextStyle(color: fgMuted, fontSize: 13)),
           const SizedBox(height: 16),
           Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: fieldBg,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white.withOpacity(0.2))),
+              border: Border.all(color: fieldBorder)),
             child: TextField(
               controller: _otpController,
               keyboardType: TextInputType.number,
               maxLength: 6,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, fontSize: 20, letterSpacing: 6),
-              decoration: const InputDecoration(
+              style: TextStyle(color: fg, fontSize: 20, letterSpacing: 6),
+              decoration: InputDecoration(
                 hintText: '------',
-                hintStyle: TextStyle(color: Colors.white30, letterSpacing: 6),
+                hintStyle: TextStyle(color: hint, letterSpacing: 6),
                 border: InputBorder.none,
                 counterText: '',
-                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14)))),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14)))),
           _errorBanner(),
           const SizedBox(height: 20),
           _primaryButton('VERIFY', _verifyOtp),
@@ -346,9 +354,9 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
                 border: Border.all(color: Colors.greenAccent, width: 2)),
             child: const Icon(Icons.check, color: Colors.greenAccent, size: 40)),
           const SizedBox(height: 16),
-          const Text('Welcome to Roswalt Realty, My Home',
+          Text('Welcome to Roswalt Realty, My Home',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+              style: TextStyle(color: fg, fontSize: 16, fontWeight: FontWeight.bold)),
         ]);
     }
   }
@@ -371,27 +379,49 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
     }
   }
 
+  Widget _champagneOrb(Color color, double size, double opacity) {
+    return Container(
+      width: size, height: size,
+      decoration: BoxDecoration(shape: BoxShape.circle,
+          gradient: RadialGradient(colors: [color.withOpacity(opacity), color.withOpacity(0)])),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final light = _isEmployee;
+    const cream = Color(0xFFF3EBDF);
+    final titleColor = light ? const Color(0xFF2B2520) : Colors.white;
+    final subtitleColor = light ? const Color(0xFF5C4C3E) : Colors.white.withOpacity(0.6);
+    final backLinkColor = light ? const Color(0xFF5C4C3E) : Colors.white.withOpacity(0.5);
+    final copyrightColor = light ? const Color(0xFF8A7A66) : Colors.white.withOpacity(0.25);
+
     return Scaffold(
+      backgroundColor: light ? cream : null,
       resizeToAvoidBottomInset: false,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          if (_videoController != null && _videoController!.value.isInitialized)
-            Positioned.fill(
-              child: FittedBox(fit: BoxFit.cover,
-                child: SizedBox(
-                  width: _videoController!.value.size.width,
-                  height: _videoController!.value.size.height,
-                  child: VideoPlayer(_videoController!))))
-          else
-            Positioned.fill(child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft, end: Alignment.bottomRight,
-                  colors: [Color(0xFF6B4A1E), Color(0xFF543813), Color(0xFF3A2509)])))),
-          Positioned.fill(child: Container(color: Colors.black.withOpacity(0.55))),
+          if (light) ...[
+            Positioned(left: -90, top: 180, child: _champagneOrb(const Color(0xFFD4AF37), 320, 0.5)),
+            Positioned(right: -120, top: 420, child: _champagneOrb(const Color(0xFFE8A77A), 340, 0.4)),
+            Positioned(left: 40, bottom: -80, child: _champagneOrb(const Color(0xFFC98E5A), 300, 0.35)),
+          ] else ...[
+            if (_videoController != null && _videoController!.value.isInitialized)
+              Positioned.fill(
+                child: FittedBox(fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: _videoController!.value.size.width,
+                    height: _videoController!.value.size.height,
+                    child: VideoPlayer(_videoController!))))
+            else
+              Positioned.fill(child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft, end: Alignment.bottomRight,
+                    colors: [Color(0xFF6B4A1E), Color(0xFF543813), Color(0xFF3A2509)])))),
+            Positioned.fill(child: Container(color: Colors.black.withOpacity(0.55))),
+          ],
           Positioned.fill(
             child: SafeArea(
               child: SingleChildScrollView(
@@ -408,17 +438,23 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
                     const SizedBox(height: 24),
                     Text(_title,
                         style: GoogleFonts.playfairDisplay(
-                            fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
+                            fontSize: 24, fontWeight: FontWeight.bold, color: titleColor)),
                     const SizedBox(height: 6),
                     Text(_subtitle,
-                        style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.6))),
+                        style: TextStyle(fontSize: 13, color: subtitleColor)),
                     const SizedBox(height: 32),
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.08),
+                        gradient: light
+                            ? LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+                                colors: [Colors.white.withOpacity(0.7), Colors.white.withOpacity(0.3)])
+                            : null,
+                        color: light ? null : Colors.white.withOpacity(0.08),
                         borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: Colors.white.withOpacity(0.15))),
+                        border: Border.all(color: light ? Colors.white.withOpacity(0.85) : Colors.white.withOpacity(0.15)),
+                        boxShadow: light ? [BoxShadow(color: const Color(0xFF6B5948).withOpacity(0.18), blurRadius: 24, offset: const Offset(0, 10))] : null,
+                      ),
                       child: _cardContent(Theme.of(context).brightness == Brightness.dark),
                     ),
                     if (_step != _Step.success) ...[
@@ -426,11 +462,11 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
                       GestureDetector(
                         onTap: () => Navigator.pop(context),
                         child: Text('← Back to Login',
-                            style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13))),
+                            style: TextStyle(color: backLinkColor, fontSize: 13))),
                     ],
                     const SizedBox(height: 16),
                     Text('© 2026 Roswalt Realty',
-                        style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.25))),
+                        style: TextStyle(fontSize: 11, color: copyrightColor)),
                   ],
                 ),
               ),

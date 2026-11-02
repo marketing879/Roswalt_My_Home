@@ -45,7 +45,7 @@ class _CPTrainingScreenState extends State<CPTrainingScreen> {
 
   Future<void> _fetchVideos() async {
     try {
-      final res = await http.get(Uri.parse('$_trainingApiBase/api/training-videos'));
+      final res = await http.get(Uri.parse('$_trainingApiBase/api/training-videos?audience=cp'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         setState(() {

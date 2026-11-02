@@ -592,40 +592,21 @@ String _deriveStatus(String? dueDateStr) {
     // Org-wide staff directory (Firestore, looked up server-side via this
     // callable so the directory itself is never exposed to unauthenticated
     // clients) — populated with name/designation for everyone, phone/email
-    // filled in as they're provided. Once a record has a matching phone and
-    // loginEnabled=true, this lets that person log in without waiting on
-    // the real SFDC employeeLookup endpoint to exist.
+    // filled in as they're provided. This is the only employee lookup path;
+    // the old SFDC employeeLookup endpoint was never built on the Salesforce
+    // side (confirmed to always 404), so falling back to it just replaced a
+    // clear "not found" with a misleading "Server error (404)".
     try {
       final result = await FirebaseFunctions.instance.httpsCallable('lookupStaffByPhone').call({'phone': digits});
       final data = result.data;
       if (data is Map && data['found'] == true) {
         return Map<String, dynamic>.from(data['data'] as Map);
       }
-    } catch (e) {
-      debugPrint('staffDirectory lookup error: $e');
-    }
-
-    try {
-      final token = await _getSfdcToken();
-      if (token == null) {
-        _error = 'Unable to connect. Please try again.';
-        return null;
-      }
-      final res = await http.get(
-        Uri.parse('$_sfdcBaseUrl/services/apexrest/mobile/employeeLookup?mobileNumber=$phone'),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-      );
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        if (data['success'] == true) return data['data'] as Map<String, dynamic>?;
-        _error = data['message'] ?? 'No employee record found for this number.';
-        return null;
-      }
-      _error = 'Server error (${res.statusCode}). Please try again.';
+      _error = 'No employee record found for this number. Please check and try again.';
       return null;
     } catch (e) {
-      debugPrint('lookupEmployeeByPhone error: $e');
-      _error = 'Network error. Please check your connection.';
+      debugPrint('staffDirectory lookup error: $e');
+      _error = 'Network error. Please check your connection and try again.';
       return null;
     }
   }
@@ -674,7 +655,21 @@ String _deriveStatus(String? dueDateStr) {
       );
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        if (data['success'] == true) return true;
+        if (data['success'] == true) {
+          // Best-effort mirror into our own Firestore so the mapped Sourcing
+          // Manager gets notified - never blocks/fails the main SFDC submit,
+          // since that's the transaction of record.
+          try {
+            await FirebaseFunctions.instance.httpsCallable('submitCPWalkInTag').call({
+              'mahaRERA': _mahaRERA ?? '', 'cpFirm': cpFirm ?? '', 'cpName': cpName ?? '',
+              'project': project, 'clientName': clientName, 'clientPhone': clientPhone,
+              'configuration': configuration ?? '', 'budget': budget ?? '', 'status': status ?? 'Hot',
+            });
+          } catch (e) {
+            debugPrint('submitCPWalkInTag error: $e');
+          }
+          return true;
+        }
         _cpWalkInError = data['message'] ?? 'Could not save this walk-in. Please try again.';
         return false;
       }

@@ -40,6 +40,9 @@ dependencies:
   cloud_functions: ^6.3.5
   cloud_firestore: ^6.7.1
   geolocator: ^13.0.1
+  google_maps_flutter: ^2.10.0
+  firebase_storage: ^13.4.5
+  flutter_local_notifications: ^18.0.1
 
 dev_dependencies:
   flutter_test:
@@ -59,7 +62,9 @@ flutter:
     - assets/images/
     - logos/
     - assets/images/horse_loader.webp
+    - assets/images/synergy_logo.png
     - assets/videos/
+    - assets/videos/synergy_intro.mp4
 flutter_launcher_icons:
   android: true
   ios: false

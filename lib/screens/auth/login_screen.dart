@@ -3,8 +3,11 @@ import 'package:provider/provider.dart';
 import '../../providers/booking_provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:video_player/video_player.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'phone_verification_screen.dart';
 import '../partner/partner_shell.dart';
+
+const _grihaAshishUrl = 'https://play.google.com/store/apps/details?id=com.roswalt';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -258,6 +261,18 @@ class _LoginScreenState extends State<LoginScreen> {
                   title: 'Channel Partner',
                   subtitle: 'Access your CP dashboard',
                   onTap: _showCPLoginDialog,
+                ),
+                const SizedBox(height: 12),
+                GestureDetector(
+                  onTap: () => launchUrl(Uri.parse(_grihaAshishUrl), mode: LaunchMode.externalApplication),
+                  child: Text('Griha Ashish',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: _gold.withOpacity(0.9),
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.underline,
+                        decorationColor: _gold.withOpacity(0.5),
+                      )),
                 ),
                 const SizedBox(height: 20),
                 Text('© 2026 Roswalt Realty',

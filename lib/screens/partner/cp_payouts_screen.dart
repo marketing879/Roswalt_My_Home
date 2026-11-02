@@ -1,9 +1,14 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import '../../providers/booking_provider.dart';
+import '../../services/ticket_api_service.dart';
+import 'cp_brokerage_flash.dart';
 
 class CPPayoutsScreen extends StatefulWidget {
   const CPPayoutsScreen({super.key});
@@ -15,10 +20,120 @@ class _CPPayoutsScreenState extends State<CPPayoutsScreen> {
   static const _bronze = Color(0xFF543813);
   static const _gold = Color(0xFFD4AF37);
 
-  // No backend endpoint exists yet for payouts/invoices - this stays empty
-  // until a real API is wired in. Submitted invoices are held only in-memory
-  // for this session so the flow can be demonstrated end-to-end.
-  final List<Map<String, dynamic>> _invoices = [];
+  // Backed by the real Sales API (TicketApiService.lookupChannelPartnerInvoices
+  // / submitChannelPartnerInvoice, '/api/v1/cp-invoices'). Each invoice's
+  // 'status' field here is exactly what the server reports — this is the
+  // CP's live view of what stage each submitted bill is at.
+  List<Map<String, dynamic>> _invoices = [];
+  bool _loading = true;
+  String? _loadError;
+  Timer? _pollTimer;
+
+  // Keyed by invoice id, remembers the last approvedAmount we've already
+  // flashed to the CP so PACO setting an amount triggers exactly one
+  // SnackBar, not one on every poll tick.
+  final Map<String, String> _lastSeenApprovedAmount = {};
+
+  // Claim ids whose brokerage-confirmation flash has already been shown this
+  // time the screen is open, so the 20s background poll doesn't re-pop the
+  // non-dismissible flash while the CP is just sitting on the screen. A
+  // fresh app-open/navigation to Payouts, or a manual pull-to-refresh, still
+  // shows it per spec section 3 ("opens Payouts, or pulls to refresh it").
+  final Set<String> _flashedClaimIds = {};
+
+  String? get _mahaRera => Provider.of<BookingProvider>(context, listen: false).mahaRERA;
+
+  @override
+  void initState() {
+    super.initState();
+    // Brokerage Confirmation Flash spec section 3: the flash appears when
+    // the CP opens Payouts, so flashes run on the initial load too.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadInvoices());
+    // PACO updates the amount on the server, not in this app - so the only
+    // way the CP finds out is by polling. 20s keeps the flash message timely
+    // without hammering the API. isAutoPoll suppresses re-showing a
+    // brokerage flash the CP has already seen this time the screen is open.
+    _pollTimer = Timer.periodic(const Duration(seconds: 20), (_) => _loadInvoices(isAutoPoll: true));
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadInvoices({bool showFlashes = true, bool isAutoPoll = false}) async {
+    final mahaRera = _mahaRera;
+    if (mahaRera == null || mahaRera.isEmpty) {
+      setState(() { _loading = false; _loadError = 'No MahaRERA number on this session.'; });
+      return;
+    }
+    try {
+      final list = await TicketApiService.instance.lookupChannelPartnerInvoices(mahaRera);
+      list.sort((a, b) => (b['submittedAt'] ?? '').toString().compareTo((a['submittedAt'] ?? '').toString()));
+
+      if (showFlashes) _flashNewPacoAmounts(list);
+      for (final inv in list) {
+        final id = (inv['id'] ?? inv['invoiceNo'] ?? '').toString();
+        final amount = (inv['approvedAmount'] ?? '').toString();
+        if (id.isNotEmpty) _lastSeenApprovedAmount[id] = amount;
+      }
+
+      if (!mounted) return;
+      setState(() { _invoices = list; _loading = false; _loadError = null; });
+
+      if (showFlashes) {
+        final pending = list.where((c) => c['needsAck'] == true).toList();
+        final toFlash = isAutoPoll
+            ? pending.where((c) => !_flashedClaimIds.contains((c['id'] ?? '').toString())).toList()
+            : pending;
+        for (final c in toFlash) {
+          final id = (c['id'] ?? '').toString();
+          if (id.isNotEmpty) _flashedClaimIds.add(id);
+        }
+        if (toFlash.isNotEmpty && mounted) {
+          await showPendingBrokerageFlashes(context, toFlash, mahaRera: mahaRera, onChanged: () => _loadInvoices(showFlashes: false));
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _loading = false; _loadError = e.toString(); });
+    }
+  }
+
+  // Reopens the flash for a single row the CP tapped (e.g. the "ACKNOWLEDGE
+  // AMOUNT" pill), bypassing the auto-poll dedupe since this is a deliberate
+  // tap, not a background refresh.
+  void _openFlashFor(Map<String, dynamic> claim) {
+    final mahaRera = _mahaRera;
+    if (mahaRera == null || mahaRera.isEmpty) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => CpBrokerageFlash(claim: claim, mahaRera: mahaRera, onChanged: () => _loadInvoices(showFlashes: false)),
+    );
+  }
+
+  // Flashes a message the moment PACO fills in approvedAmount for a bill
+  // that previously had none - this is "the amount shared should come up as
+  // a flash message to the CP".
+  void _flashNewPacoAmounts(List<Map<String, dynamic>> list) {
+    for (final inv in list) {
+      final id = (inv['id'] ?? inv['invoiceNo'] ?? '').toString();
+      final amount = (inv['approvedAmount'] ?? '').toString();
+      if (id.isEmpty || amount.isEmpty) continue;
+      final previous = _lastSeenApprovedAmount[id];
+      final isNew = previous == null || previous.isEmpty;
+      if (isNew && mounted) {
+        final invoiceNo = (inv['invoiceNo'] ?? id).toString();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          duration: const Duration(seconds: 6),
+          backgroundColor: const Color(0xFF1565C0),
+          content: Text('PACO shared an amount of ₹$amount for invoice $invoiceNo.'),
+        ));
+      }
+    }
+  }
 
   Color _statusColor(String status) {
     switch (status) {
@@ -89,67 +204,161 @@ class _CPPayoutsScreenState extends State<CPPayoutsScreen> {
         backgroundColor: _bronze,
         title: const Text('Payouts', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
       ),
-      body: _invoices.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.receipt_long_outlined, size: 56, color: Colors.grey[300]),
-                  const SizedBox(height: 12),
-                  Text('No invoices submitted yet', style: TextStyle(color: Colors.grey[500], fontSize: 14)),
-                  const SizedBox(height: 4),
-                  Text('Tap + to submit your first invoice', style: TextStyle(color: Colors.grey[400], fontSize: 12)),
-                ],
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _invoices.length,
-              itemBuilder: (context, index) {
-                final inv = _invoices[index];
-                final status = inv['status'] as String;
-                final color = _statusColor(status);
-                return GestureDetector(
-                  onTap: status == 'NOT APPROVED'
-                      ? () => _showRejectionReason(context, inv['reason'] ?? 'No reason provided.')
-                      : null,
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8)],
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 40, height: 40,
-                          decoration: BoxDecoration(color: _bronze.withOpacity(0.08), borderRadius: BorderRadius.circular(10)),
-                          child: Icon(Icons.description_outlined, color: _bronze, size: 20),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(inv['invoiceNo'] ?? '--', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                              Text(inv['date'] ?? '--', style: TextStyle(fontSize: 11, color: Colors.grey[500])),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
-                          child: Text(status, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
-                        ),
-                        if (status == 'NOT APPROVED') const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
-                      ],
-                    ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(color: _bronze))
+          : _loadError != null
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
+                      const SizedBox(height: 10),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Text(_loadError!, textAlign: TextAlign.center, style: TextStyle(color: Colors.red[400], fontSize: 12)),
+                      ),
+                      const SizedBox(height: 12),
+                      TextButton(onPressed: () => _loadInvoices(), child: const Text('Retry')),
+                    ],
                   ),
-                );
-              },
-            ),
+                )
+              : RefreshIndicator(
+                  color: _bronze,
+                  onRefresh: () => _loadInvoices(),
+                  child: _invoices.isEmpty
+                      ? ListView(
+                          children: [
+                            SizedBox(
+                              height: 420,
+                              child: Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.receipt_long_outlined, size: 56, color: Colors.grey[300]),
+                                    const SizedBox(height: 12),
+                                    Text('No invoices submitted yet', style: TextStyle(color: Colors.grey[500], fontSize: 14)),
+                                    const SizedBox(height: 4),
+                                    Text('Tap + to submit your first invoice', style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _invoices.length,
+                          itemBuilder: (context, index) {
+                            final inv = _invoices[index];
+                            final status = (inv['status'] ?? '--').toString();
+                            final color = _statusColor(status);
+                            final approvedAmount = (inv['approvedAmount'] ?? '').toString();
+                            final pacoRemark = (inv['pacoRemark'] ?? '').toString();
+                            final needsAck = inv['needsAck'] == true;
+                            final canUpload = inv['canUpload'] == true;
+                            final hasInvoice = (inv['invoiceNo'] ?? '').toString().isNotEmpty;
+                            final claimAmount = (inv['amount'] ?? '').toString();
+
+                            final title = hasInvoice
+                                ? (inv['invoiceNo'] ?? '--').toString()
+                                : '${inv['bookingId'] ?? '--'} · ${inv['clientName'] ?? inv['name'] ?? '--'}';
+                            final subtitle = hasInvoice
+                                ? (inv['invoiceDate'] ?? '--').toString()
+                                : '₹$claimAmount · ${canUpload ? 'Invoice not raised yet' : 'Awaiting acknowledgement'}';
+
+                            VoidCallback? onTap;
+                            Widget trailingPill;
+                            if (needsAck) {
+                              onTap = () => _openFlashFor(inv);
+                              trailingPill = Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(color: _gold.withOpacity(0.18), borderRadius: BorderRadius.circular(8)),
+                                child: const Text('ACKNOWLEDGE AMOUNT', style: TextStyle(color: Color(0xFF8B6914), fontSize: 9.5, fontWeight: FontWeight.bold)),
+                              );
+                            } else if (canUpload && !hasInvoice) {
+                              onTap = () => Navigator.push(context, MaterialPageRoute(builder: (_) => CPSubmitInvoiceScreen(
+                                    claimId: (inv['id'] ?? '').toString(),
+                                    prefillMahaRera: _mahaRera,
+                                    prefillBookingId: (inv['bookingId'] ?? '').toString(),
+                                    prefillClientName: (inv['clientName'] ?? inv['name'] ?? '').toString(),
+                                    prefillAmount: claimAmount,
+                                  ))).then((result) {
+                                if (result != null && mounted) _loadInvoices(showFlashes: false);
+                              });
+                              trailingPill = Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(color: _bronze.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                                child: Text('RAISE INVOICE', style: TextStyle(color: _bronze, fontSize: 9.5, fontWeight: FontWeight.bold)),
+                              );
+                            } else {
+                              onTap = status == 'NOT APPROVED'
+                                  ? () => _showRejectionReason(context, inv['reason'] ?? 'No reason provided.')
+                                  : null;
+                              trailingPill = Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
+                                child: Text(status, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
+                              );
+                            }
+
+                            return GestureDetector(
+                              onTap: onTap,
+                              child: Container(
+                                margin: const EdgeInsets.only(bottom: 10),
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                                  borderRadius: BorderRadius.circular(14),
+                                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8)],
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          width: 40, height: 40,
+                                          decoration: BoxDecoration(color: _bronze.withOpacity(0.08), borderRadius: BorderRadius.circular(10)),
+                                          child: Icon(needsAck ? Icons.notifications_active_outlined : Icons.description_outlined, color: _bronze, size: 20),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                              Text(subtitle, style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+                                            ],
+                                          ),
+                                        ),
+                                        trailingPill,
+                                        if (onTap != null) const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+                                      ],
+                                    ),
+                                    if (approvedAmount.isNotEmpty) ...[
+                                      const SizedBox(height: 10),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        decoration: BoxDecoration(color: const Color(0xFF1565C0).withOpacity(0.08), borderRadius: BorderRadius.circular(8)),
+                                        child: Row(children: [
+                                          const Icon(Icons.currency_rupee, size: 14, color: Color(0xFF1565C0)),
+                                          const SizedBox(width: 6),
+                                          Expanded(child: Text('Amount shared by PACO: ₹$approvedAmount',
+                                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1565C0)))),
+                                        ]),
+                                      ),
+                                    ],
+                                    if (pacoRemark.isNotEmpty) ...[
+                                      const SizedBox(height: 6),
+                                      Text('PACO remark: $pacoRemark', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: _bronze,
         child: const Icon(Icons.add, color: Colors.white),
@@ -158,14 +367,8 @@ class _CPPayoutsScreenState extends State<CPPayoutsScreen> {
             context,
             MaterialPageRoute(builder: (_) => const CPSubmitInvoiceScreen()),
           );
-          if (result != null && result is Map<String, dynamic>) {
-            setState(() {
-              _invoices.insert(0, {
-                'invoiceNo': result['invoiceNo'] ?? 'INV_' + DateTime.now().millisecondsSinceEpoch.toString().substring(7),
-                'date': result['date'] ?? '--',
-                'status': 'SUBMITTED',
-              });
-            });
+          if (result != null && mounted) {
+            await _loadInvoices(showFlashes: false);
           }
         },
       ),
@@ -174,7 +377,25 @@ class _CPPayoutsScreenState extends State<CPPayoutsScreen> {
 }
 
 class CPSubmitInvoiceScreen extends StatefulWidget {
-  const CPSubmitInvoiceScreen({super.key});
+  // Set when raised straight from an acknowledged brokerage claim ("Raise
+  // invoice now" in the Brokerage Confirmation Flash) - carries the amount
+  // PACO already confirmed through to submission, and shows a read-only
+  // summary banner instead of letting the CP re-type it.
+  final String? claimId;
+  final String? prefillMahaRera;
+  final String? prefillBookingId;
+  final String? prefillClientName;
+  final String? prefillAmount;
+
+  const CPSubmitInvoiceScreen({
+    super.key,
+    this.claimId,
+    this.prefillMahaRera,
+    this.prefillBookingId,
+    this.prefillClientName,
+    this.prefillAmount,
+  });
+
   @override
   State<CPSubmitInvoiceScreen> createState() => _CPSubmitInvoiceScreenState();
 }
@@ -191,6 +412,8 @@ class _CPSubmitInvoiceScreenState extends State<CPSubmitInvoiceScreen> {
   final _gstCtrl = TextEditingController();
   DateTime _date = DateTime.now();
 
+  bool get _fromClaim => widget.claimId != null && widget.claimId!.isNotEmpty;
+
   final _bankNameCtrl = TextEditingController();
   final _acNameCtrl = TextEditingController();
   final _acNoCtrl = TextEditingController();
@@ -200,6 +423,12 @@ class _CPSubmitInvoiceScreenState extends State<CPSubmitInvoiceScreen> {
 
   PlatformFile? _pickedFile;
   bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.prefillMahaRera != null) _reraCtrl.text = widget.prefillMahaRera!;
+  }
 
   @override
   void dispose() {
@@ -354,9 +583,9 @@ class _CPSubmitInvoiceScreenState extends State<CPSubmitInvoiceScreen> {
   }
 
   Future<void> _submit() async {
-    if (_nameCtrl.text.trim().isEmpty || _mobileCtrl.text.trim().isEmpty) {
+    if (_nameCtrl.text.trim().isEmpty || _mobileCtrl.text.trim().isEmpty || _reraCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Please fill at least Name and Mobile number.'),
+        content: Text('Please fill at least Name, Mobile number and MahaRERA No.'),
         backgroundColor: Colors.red,
       ));
       return;
@@ -371,25 +600,54 @@ class _CPSubmitInvoiceScreenState extends State<CPSubmitInvoiceScreen> {
 
     setState(() => _submitting = true);
 
-    // NOTE: No backend endpoint exists yet for invoice submission.
-    // This currently just simulates a brief delay and returns the entered
-    // details to the Payouts list locally. Replace this block with a real
-    // API call (multipart upload of _pickedFile plus the form fields) once
-    // the endpoint is available.
-    await Future.delayed(const Duration(milliseconds: 800));
+    try {
+      final result = await TicketApiService.instance.submitChannelPartnerInvoice(
+        name: _nameCtrl.text.trim(),
+        mobile: _mobileCtrl.text.trim(),
+        mahaRera: _reraCtrl.text.trim(),
+        firmName: _firmCtrl.text.trim(),
+        pan: _panCtrl.text.trim(),
+        gst: _gstCtrl.text.trim(),
+        invoiceDate: _date,
+        bankName: _bankNameCtrl.text.trim(),
+        accountName: _acNameCtrl.text.trim(),
+        accountNumber: _acNoCtrl.text.trim(),
+        accountType: _acType,
+        branch: _branchCtrl.text.trim(),
+        ifsc: _ifscCtrl.text.trim(),
+        invoiceFile: File(_pickedFile!.path!),
+        claimId: widget.claimId,
+        confirmedAmount: widget.prefillAmount,
+      );
 
-    if (!mounted) return;
-    setState(() => _submitting = false);
+      if (!mounted) return;
+      setState(() => _submitting = false);
 
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('Invoice added locally. Backend submission is not yet connected.'),
-      backgroundColor: Colors.orange,
-    ));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Invoice submitted successfully.'),
+        backgroundColor: Colors.green,
+      ));
 
-    Navigator.pop(context, {
-      'invoiceNo': 'INV_' + DateTime.now().millisecondsSinceEpoch.toString().substring(7),
-      'date': _fmtDate(_date),
-    });
+      Navigator.pop(context, {
+        'invoiceNo': result['invoiceNo']?.toString() ??
+            'INV_' + DateTime.now().millisecondsSinceEpoch.toString().substring(7),
+        'date': _fmtDate(_date),
+      });
+    } on TicketApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(e.message),
+        backgroundColor: Colors.red,
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Could not submit invoice: $e'),
+        backgroundColor: Colors.red,
+      ));
+    }
   }
 
   @override
@@ -410,6 +668,34 @@ class _CPSubmitInvoiceScreenState extends State<CPSubmitInvoiceScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (_fromClaim) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1565C0).withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF1565C0).withOpacity(0.3)),
+                ),
+                child: Row(children: [
+                  const Icon(Icons.verified_outlined, color: Color(0xFF1565C0), size: 22),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Raising invoice for ${widget.prefillBookingId ?? '--'} · ${widget.prefillClientName ?? '--'}',
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF0D3D73))),
+                        const SizedBox(height: 2),
+                        Text('Confirmed amount: ₹${widget.prefillAmount ?? '--'}',
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1565C0))),
+                      ],
+                    ),
+                  ),
+                ]),
+              ),
+              const SizedBox(height: 16),
+            ],
             GestureDetector(
               onTap: _downloadProforma,
               child: Container(

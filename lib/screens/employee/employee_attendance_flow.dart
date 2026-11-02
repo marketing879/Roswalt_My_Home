@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../providers/employee_attendance_provider.dart';
-import 'employee_lost_band_screen.dart';
+import 'employee_live_map_screen.dart';
 
 const _bronze = Color(0xFF543813);
 const _gold = Color(0xFFD4AF37);
@@ -83,32 +82,6 @@ class EmployeeSmartBandScreen extends StatelessWidget {
           Text('You can now mark your attendance using your band.', textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12, color: isDark ? Colors.white54 : Colors.grey[600])),
           const SizedBox(height: 28),
-          _row(context, isDark, cardBg, Icons.sync, 'Sync Band', subtitle: 'Last synced: Today, 09:15 AM',
-              onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Band synced.'), backgroundColor: _bronze))),
-          _row(context, isDark, cardBg, Icons.settings_outlined, 'Band Settings',
-              onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Band settings coming soon.'), backgroundColor: _bronze))),
-          const SizedBox(height: 12),
-          GestureDetector(
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EmployeeLostBandScreen())),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: Colors.red.withOpacity(0.06), borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.red.withOpacity(0.2))),
-              child: Row(children: [
-                const Icon(Icons.error_outline, color: Colors.red, size: 20),
-                const SizedBox(width: 10),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Lost or Damaged Band?', style: TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold)),
-                  Text('Replace your band for ₹150', style: TextStyle(color: Colors.red.withOpacity(0.8), fontSize: 11)),
-                ])),
-                const Icon(Icons.chevron_right, color: Colors.red, size: 18),
-              ]),
-            ),
-          ),
-          const SizedBox(height: 24),
           SizedBox(width: double.infinity,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: _bronze, padding: const EdgeInsets.symmetric(vertical: 16),
@@ -129,28 +102,6 @@ class EmployeeSmartBandScreen extends StatelessWidget {
     );
   }
 
-  Widget _row(BuildContext context, bool isDark, Color cardBg, IconData icon, String label, {String? subtitle, required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: _gold.withOpacity(0.15))),
-        child: Row(children: [
-          Icon(icon, size: 20, color: _bronze),
-          const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white : const Color(0xFF1A0A00))),
-            if (subtitle != null)
-              Text(subtitle, style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white38 : Colors.grey[500])),
-          ])),
-          Icon(Icons.chevron_right, color: isDark ? Colors.white38 : Colors.grey[400]),
-        ]),
-      ),
-    );
-  }
 }
 
 // ── CHECK IN ───────────────────────────────────────────────────
@@ -193,20 +144,17 @@ class EmployeeCheckInScreen extends StatelessWidget {
             Text('Location', style: TextStyle(fontSize: 11, color: isDark ? Colors.white38 : Colors.grey[500])),
             Text(attendance.officeLocation, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600,
                 color: isDark ? Colors.white : const Color(0xFF1A0A00))),
-            if (attendance.todayLatitude != null && attendance.todayLongitude != null) ...[
-              const SizedBox(height: 4),
-              GestureDetector(
-                onTap: () => launchUrl(Uri.parse(
-                    'https://www.google.com/maps/search/?api=1&query=${attendance.todayLatitude},${attendance.todayLongitude}')),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.location_on, size: 13, color: _bronze),
-                  const SizedBox(width: 4),
-                  Text('View GPS location on map', style: TextStyle(fontSize: 11.5, color: _bronze, decoration: TextDecoration.underline)),
-                ]),
-              ),
-            ] else if (attendance.locationError != null) ...[
+            if (attendance.locationError != null) ...[
               const SizedBox(height: 4),
               Text(attendance.locationError!, style: TextStyle(fontSize: 11, color: Colors.orange[800])),
+            ],
+            if (attendance.isLiveTrackingActive) ...[
+              const SizedBox(height: 6),
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Container(width: 7, height: 7, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.green)),
+                const SizedBox(width: 6),
+                Text('Live tracking active', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.green[700])),
+              ]),
             ],
             const SizedBox(height: 8),
             Text(attendance.isLateCheckInToday
@@ -380,6 +328,7 @@ class _EmployeeAttendanceCalendarScreenState extends State<EmployeeAttendanceCal
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(children: [
+          const EmployeeMovementMapCard(),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(16),

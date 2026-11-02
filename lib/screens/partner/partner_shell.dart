@@ -16,6 +16,8 @@ import 'cp_leaderboard_screen.dart';
 import 'cp_training_screen.dart';
 import 'cp_marketing_collateral_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'cp_brokerage_flash.dart';
+import '../../services/ticket_api_service.dart';
 
 class PartnerShell extends StatefulWidget {
   const PartnerShell({super.key});
@@ -34,6 +36,21 @@ class _PartnerShellState extends State<PartnerShell> {
   void initState() {
     super.initState();
     _initDrawerVideo();
+    // Brokerage Confirmation Flash spec section 3: the flash appears when
+    // the CP opens their dashboard after logging in.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkPendingBrokerageFlashes());
+  }
+
+  Future<void> _checkPendingBrokerageFlashes() async {
+    final mahaRera = Provider.of<BookingProvider>(context, listen: false).mahaRERA;
+    if (mahaRera == null || mahaRera.isEmpty) return;
+    try {
+      final list = await TicketApiService.instance.lookupChannelPartnerInvoices(mahaRera);
+      if (!mounted) return;
+      await showPendingBrokerageFlashes(context, list, mahaRera: mahaRera);
+    } catch (_) {
+      // Dashboard shouldn't block/error out just because the flash check failed.
+    }
   }
 
   Future<void> _initDrawerVideo() async {

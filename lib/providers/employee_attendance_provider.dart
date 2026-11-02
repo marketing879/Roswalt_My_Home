@@ -1,8 +1,13 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Employee Attendance/Leave/Smart-Band state, backed by Firestore
 /// (`employees/{uid}/...`) so check-ins, leave requests and band status are
@@ -61,6 +66,169 @@ class EmployeeAttendanceProvider extends ChangeNotifier {
     }
   }
 
+  // ── Local phone cache (Personal/Bank Details survive offline & reinstalls
+  // of the same session, and appear instantly on next open) ──
+  String get _cacheKeyPrefix => 'profile_${_uid ?? 'anon'}';
+
+  Future<void> _cachePersonalDetails() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('${_cacheKeyPrefix}_personal', jsonEncode({
+      'phone': personalPhone, 'personalEmail': personalEmail, 'dateOfBirth': dateOfBirth,
+      'bloodGroup': bloodGroup, 'address': address,
+      'emergencyContactName': emergencyContactName, 'emergencyContactPhone': emergencyContactPhone,
+    }));
+  }
+
+  Future<void> _cacheBankDetails() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('${_cacheKeyPrefix}_bank', jsonEncode({
+      'accountHolderName': accountHolderName, 'bankName': bankName, 'accountNumber': accountNumber,
+      'ifscCode': ifscCode, 'branchName': branchName, 'upiId': upiId,
+    }));
+  }
+
+  Future<void> _loadCachedProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+    final personalRaw = prefs.getString('${_cacheKeyPrefix}_personal');
+    if (personalRaw != null) {
+      final d = jsonDecode(personalRaw) as Map<String, dynamic>;
+      personalPhone = (d['phone'] as String?) ?? '';
+      personalEmail = (d['personalEmail'] as String?) ?? '';
+      dateOfBirth = (d['dateOfBirth'] as String?) ?? '';
+      bloodGroup = (d['bloodGroup'] as String?) ?? '';
+      address = (d['address'] as String?) ?? '';
+      emergencyContactName = (d['emergencyContactName'] as String?) ?? '';
+      emergencyContactPhone = (d['emergencyContactPhone'] as String?) ?? '';
+    }
+    final bankRaw = prefs.getString('${_cacheKeyPrefix}_bank');
+    if (bankRaw != null) {
+      final b = jsonDecode(bankRaw) as Map<String, dynamic>;
+      accountHolderName = (b['accountHolderName'] as String?) ?? '';
+      bankName = (b['bankName'] as String?) ?? '';
+      accountNumber = (b['accountNumber'] as String?) ?? '';
+      ifscCode = (b['ifscCode'] as String?) ?? '';
+      branchName = (b['branchName'] as String?) ?? '';
+      upiId = (b['upiId'] as String?) ?? '';
+    }
+  }
+
+  // ── Personal Details (editable by the employee) ──
+  String personalPhone = '';
+  String personalEmail = '';
+  String dateOfBirth = '';
+  String bloodGroup = '';
+  String address = '';
+  String emergencyContactName = '';
+  String emergencyContactPhone = '';
+
+  Future<void> savePersonalDetails({
+    required String phone,
+    required String personalEmail,
+    required String dateOfBirth,
+    required String bloodGroup,
+    required String address,
+    required String emergencyContactName,
+    required String emergencyContactPhone,
+  }) async {
+    final doc = _employeeDoc;
+    if (doc == null) return;
+    this.personalPhone = phone;
+    this.personalEmail = personalEmail;
+    this.dateOfBirth = dateOfBirth;
+    this.bloodGroup = bloodGroup;
+    this.address = address;
+    this.emergencyContactName = emergencyContactName;
+    this.emergencyContactPhone = emergencyContactPhone;
+    await doc.collection('meta').doc('personalDetails').set({
+      'phone': phone, 'personalEmail': personalEmail, 'dateOfBirth': dateOfBirth,
+      'bloodGroup': bloodGroup, 'address': address,
+      'emergencyContactName': emergencyContactName, 'emergencyContactPhone': emergencyContactPhone,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    await _cachePersonalDetails();
+    notifyListeners();
+  }
+
+  // ── Bank Details (editable by the employee) ──
+  String accountHolderName = '';
+  String bankName = '';
+  String accountNumber = '';
+  String ifscCode = '';
+  String branchName = '';
+  String upiId = '';
+
+  Future<void> saveBankDetails({
+    required String accountHolderName,
+    required String bankName,
+    required String accountNumber,
+    required String ifscCode,
+    required String branchName,
+    required String upiId,
+  }) async {
+    final doc = _employeeDoc;
+    if (doc == null) return;
+    this.accountHolderName = accountHolderName;
+    this.bankName = bankName;
+    this.accountNumber = accountNumber;
+    this.ifscCode = ifscCode;
+    this.branchName = branchName;
+    this.upiId = upiId;
+    await doc.collection('meta').doc('bankDetails').set({
+      'accountHolderName': accountHolderName, 'bankName': bankName, 'accountNumber': accountNumber,
+      'ifscCode': ifscCode, 'branchName': branchName, 'upiId': upiId,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    await _cacheBankDetails();
+    notifyListeners();
+  }
+
+  // ── My Documents (uploaded by the employee to Firebase Storage) ──
+  final List<Map<String, dynamic>> documents = [];
+  bool documentsLoading = false;
+
+  Future<void> loadDocuments() async {
+    final uid = _uid;
+    if (uid == null) return;
+    documentsLoading = true;
+    notifyListeners();
+    try {
+      final listResult = await FirebaseStorage.instance.ref('employees/$uid/documents').listAll();
+      final items = await Future.wait(listResult.items.map((ref) async {
+        final meta = await ref.getMetadata();
+        final url = await ref.getDownloadURL();
+        return {
+          'name': (meta.customMetadata?['originalName']) ?? ref.name,
+          'path': ref.fullPath,
+          'url': url,
+          'sizeBytes': meta.size ?? 0,
+          'uploadedAt': meta.timeCreated,
+        };
+      }));
+      documents
+        ..clear()
+        ..addAll(items..sort((a, b) => (b['uploadedAt'] as DateTime).compareTo(a['uploadedAt'] as DateTime)));
+    } catch (e) {
+      debugPrint('loadDocuments error: $e');
+    }
+    documentsLoading = false;
+    notifyListeners();
+  }
+
+  Future<void> uploadDocument(File file, String originalName) async {
+    final uid = _uid;
+    if (uid == null) return;
+    final safeName = '${DateTime.now().millisecondsSinceEpoch}_$originalName';
+    final ref = FirebaseStorage.instance.ref('employees/$uid/documents/$safeName');
+    await ref.putFile(file, SettableMetadata(customMetadata: {'originalName': originalName}));
+    await loadDocuments();
+  }
+
+  Future<void> deleteDocument(String path) async {
+    await FirebaseStorage.instance.ref(path).delete();
+    documents.removeWhere((d) => d['path'] == path);
+    notifyListeners();
+  }
+
   bool get isCheckedInToday => todayCheckIn != null;
   bool get isCheckedOutToday => todayCheckOut != null;
   bool get isLateCheckInToday {
@@ -105,6 +273,35 @@ class EmployeeAttendanceProvider extends ChangeNotifier {
       await doc.collection('meta').doc('band').set({
         'bandId': bandId, 'connected': true, 'batteryPercent': 100,
       });
+    }
+
+    // Instant load from the phone's local cache first (works offline too),
+    // then refreshed from Firestore below the moment that resolves.
+    await _loadCachedProfile();
+
+    final detailsSnap = await doc.collection('meta').doc('personalDetails').get();
+    if (detailsSnap.exists) {
+      final d = detailsSnap.data()!;
+      personalPhone = (d['phone'] as String?) ?? '';
+      personalEmail = (d['personalEmail'] as String?) ?? '';
+      dateOfBirth = (d['dateOfBirth'] as String?) ?? '';
+      bloodGroup = (d['bloodGroup'] as String?) ?? '';
+      address = (d['address'] as String?) ?? '';
+      emergencyContactName = (d['emergencyContactName'] as String?) ?? '';
+      emergencyContactPhone = (d['emergencyContactPhone'] as String?) ?? '';
+      await _cachePersonalDetails();
+    }
+
+    final bankSnap = await doc.collection('meta').doc('bankDetails').get();
+    if (bankSnap.exists) {
+      final b = bankSnap.data()!;
+      accountHolderName = (b['accountHolderName'] as String?) ?? '';
+      bankName = (b['bankName'] as String?) ?? '';
+      accountNumber = (b['accountNumber'] as String?) ?? '';
+      ifscCode = (b['ifscCode'] as String?) ?? '';
+      branchName = (b['branchName'] as String?) ?? '';
+      upiId = (b['upiId'] as String?) ?? '';
+      await _cacheBankDetails();
     }
 
     final leaveSnap = await doc.collection('meta').doc('leaveBalances').get();
@@ -156,6 +353,16 @@ class EmployeeAttendanceProvider extends ChangeNotifier {
       ..addAll(regSnap.docs.map((d) => {'id': d.id, ...d.data()}));
 
     await _loadMonthAttendanceStats(today);
+    if (isCheckedInToday && !isCheckedOutToday) _startLiveTracking(today);
+
+    final fieldDutySnap = await _fieldDutyStatusDoc?.get();
+    if (fieldDutySnap?.data()?['active'] == true) {
+      fieldDutyCurrentLat = (fieldDutySnap!.data()?['currentLat'] as num?)?.toDouble();
+      fieldDutyCurrentLng = (fieldDutySnap.data()?['currentLng'] as num?)?.toDouble();
+      fieldDutyStartedAt = (fieldDutySnap.data()?['startedAt'] as Timestamp?)?.toDate();
+      _resumeFieldDutyTracking();
+    }
+
     _loaded = true;
     notifyListeners();
   }
@@ -254,6 +461,7 @@ class EmployeeAttendanceProvider extends ChangeNotifier {
       'finalized': false,
     }, SetOptions(merge: true));
     _attendanceStatus[_dateKey(now)] = status;
+    _startLiveTracking(now);
     notifyListeners();
   }
 
@@ -267,7 +475,118 @@ class EmployeeAttendanceProvider extends ChangeNotifier {
       'checkOut': Timestamp.fromDate(now),
       'totalMinutes': minutes,
     }, SetOptions(merge: true));
+    await _stopLiveTracking();
     notifyListeners();
+  }
+
+  // ── Live location trail (Zomato/Swiggy-style) ──
+  // Tracks movement only while checked in AND the app is foregrounded/open
+  // (no background service — that needs a native foreground-service +
+  // ACCESS_BACKGROUND_LOCATION, a much bigger, separately-reviewed Play
+  // Store feature not built here). Each ping updates `liveLocation` on
+  // today's attendance doc and appends to its locationTrail subcollection.
+  StreamSubscription<Position>? _positionStream;
+  bool get isLiveTrackingActive => _positionStream != null;
+
+  void _startLiveTracking(DateTime day) {
+    final doc = _employeeDoc;
+    if (doc == null || _positionStream != null) return;
+    final dayDoc = doc.collection('attendance').doc(_dateKey(day));
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 25),
+    ).listen((pos) async {
+      todayLatitude = pos.latitude;
+      todayLongitude = pos.longitude;
+      notifyListeners();
+      await dayDoc.set({
+        'liveLocation': {'latitude': pos.latitude, 'longitude': pos.longitude, 'updatedAt': FieldValue.serverTimestamp()},
+      }, SetOptions(merge: true));
+      await dayDoc.collection('locationTrail').add({
+        'latitude': pos.latitude, 'longitude': pos.longitude, 'recordedAt': FieldValue.serverTimestamp(),
+      });
+    }, onError: (e) => debugPrint('Live tracking error: $e'));
+  }
+
+  Future<void> _stopLiveTracking() async {
+    await _positionStream?.cancel();
+    _positionStream = null;
+  }
+
+  // ── Field Duty (live route sharing with the mapped TL) ──
+  // Independent of check-in/out — an employee out visiting sites/leads taps
+  // this to let their TL (reportingMap/{employeeId}.tlId, maintained on the
+  // web admin) watch their live route, same idea as a delivery-app tracking
+  // screen. Notified via onFieldDutyStarted (Cloud Functions); the TL reads
+  // it through the listMyFieldDutyTeam / getFieldDutyTrail callables, not a
+  // direct cross-user Firestore read.
+  bool fieldDutyActive = false;
+  DateTime? fieldDutyStartedAt;
+  double? fieldDutyCurrentLat;
+  double? fieldDutyCurrentLng;
+  StreamSubscription<Position>? _fieldDutyStream;
+
+  DocumentReference<Map<String, dynamic>>? get _fieldDutyStatusDoc =>
+      _employeeDoc?.collection('fieldDuty').doc('status');
+
+  Future<void> startFieldDuty() async {
+    final statusDoc = _fieldDutyStatusDoc;
+    if (statusDoc == null || _fieldDutyStream != null) return;
+    fieldDutyActive = true;
+    fieldDutyStartedAt = DateTime.now();
+    await statusDoc.set({'active': true, 'startedAt': FieldValue.serverTimestamp()});
+    _fieldDutyStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 25),
+    ).listen((pos) async {
+      fieldDutyCurrentLat = pos.latitude;
+      fieldDutyCurrentLng = pos.longitude;
+      notifyListeners();
+      await statusDoc.set({
+        'currentLat': pos.latitude, 'currentLng': pos.longitude, 'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      await statusDoc.collection('trail').add({
+        'latitude': pos.latitude, 'longitude': pos.longitude, 'recordedAt': FieldValue.serverTimestamp(),
+      });
+    }, onError: (e) => debugPrint('Field duty tracking error: $e'));
+    notifyListeners();
+  }
+
+  /// Resumes an already-active field duty session on app relaunch, without
+  /// resetting `startedAt` (unlike [startFieldDuty], which begins a new one).
+  void _resumeFieldDutyTracking() {
+    final statusDoc = _fieldDutyStatusDoc;
+    if (statusDoc == null || _fieldDutyStream != null) return;
+    fieldDutyActive = true;
+    _fieldDutyStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 25),
+    ).listen((pos) async {
+      fieldDutyCurrentLat = pos.latitude;
+      fieldDutyCurrentLng = pos.longitude;
+      notifyListeners();
+      await statusDoc.set({
+        'currentLat': pos.latitude, 'currentLng': pos.longitude, 'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      await statusDoc.collection('trail').add({
+        'latitude': pos.latitude, 'longitude': pos.longitude, 'recordedAt': FieldValue.serverTimestamp(),
+      });
+    }, onError: (e) => debugPrint('Field duty tracking error: $e'));
+  }
+
+  Future<void> endFieldDuty() async {
+    await _fieldDutyStream?.cancel();
+    _fieldDutyStream = null;
+    fieldDutyActive = false;
+    fieldDutyStartedAt = null;
+    fieldDutyCurrentLat = null;
+    fieldDutyCurrentLng = null;
+    await _fieldDutyStatusDoc?.set({'active': false, 'endedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _positionStream?.cancel();
+    _fieldDutyStream?.cancel();
+    super.dispose();
   }
 
   // ── Attendance Calendar ──
@@ -421,6 +740,12 @@ class EmployeeAttendanceProvider extends ChangeNotifier {
 
   /// Clears in-memory state on sign-out; Firestore data itself is untouched.
   void reset() {
+    _positionStream?.cancel();
+    _positionStream = null;
+    _fieldDutyStream?.cancel();
+    _fieldDutyStream = null;
+    fieldDutyActive = false;
+    fieldDutyStartedAt = null;
     _loaded = false;
     todayCheckIn = null;
     todayCheckOut = null;
@@ -430,5 +755,19 @@ class EmployeeAttendanceProvider extends ChangeNotifier {
     totalMinutesThisMonth = 0;
     leaveHistory.clear();
     regularisations.clear();
+    personalPhone = '';
+    personalEmail = '';
+    dateOfBirth = '';
+    bloodGroup = '';
+    address = '';
+    emergencyContactName = '';
+    emergencyContactPhone = '';
+    accountHolderName = '';
+    bankName = '';
+    accountNumber = '';
+    ifscCode = '';
+    branchName = '';
+    upiId = '';
+    documents.clear();
   }
 }

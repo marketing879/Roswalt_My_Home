@@ -7,7 +7,7 @@ import 'theme/app_theme.dart';
 import 'providers/booking_provider.dart';
 import 'providers/notification_provider.dart';
 import 'providers/employee_attendance_provider.dart';
-import 'providers/employee_lms_provider.dart';
+import 'providers/ticket_provider.dart';
 import 'services/notification_service.dart';
 import 'screens/splash/splash_screen.dart';
 import 'screens/auth/session_wrapper.dart';
@@ -37,7 +37,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => BookingProvider()),
         ChangeNotifierProvider(create: (_) => EmployeeAttendanceProvider()),
-        ChangeNotifierProvider(create: (_) => EmployeeLmsProvider()),
+        ChangeNotifierProvider(create: (_) => TicketProvider()..restoreSession()),
         ChangeNotifierProvider.value(value: notificationProvider),
       ],
       child: const RoswaltApp(),

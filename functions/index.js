@@ -1,6 +1,6 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
-const { onDocumentUpdated, onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onDocumentUpdated, onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
@@ -256,6 +256,15 @@ async function findReportingManagerUid(employeeId) {
   return managerId ? findUidByEmployeeId(managerId) : null;
 }
 
+// Field Duty is specifically about the TL relationship (not HOD fallback) -
+// a sourcing/field employee's TL is who watches their live route.
+async function findTlUid(employeeId) {
+  if (!employeeId) return null;
+  const mapSnap = await db.collection('reportingMap').doc(employeeId).get();
+  const tlId = mapSnap.data()?.tlId;
+  return tlId ? findUidByEmployeeId(tlId) : null;
+}
+
 async function notifyBuddy(buddyEmployeeId, title, body, data) {
   const buddyUid = await findUidByEmployeeId(buddyEmployeeId);
   if (buddyUid) await notifyEmployee(buddyUid, title, body, data);
@@ -354,3 +363,235 @@ exports.onRegularisationCreated = onDocumentCreated('employees/{uid}/regularisat
 // by adminRemindRegularisation in the separate HRMS web admin's own Cloud
 // Functions (same Firebase project, different codebase) - intentionally
 // NOT duplicated here to avoid double reminders.
+
+// Training videos are uploaded entirely on SmartCue's side (Aziz Khan's
+// login there), not through this app — so "new video added" can only be
+// detected by polling SmartCue's own catalog, not a Firestore trigger.
+// Every 30 minutes: fetches the same feed the Employee Training Videos
+// screen reads, diffs it against the last-seen id list (adminMeta/
+// smartcueSeenVideos), and notifies every employee for anything new.
+//
+// CAVEAT: SmartCue's /api/training-videos has no audience field yet (see
+// employee_training_videos_screen.dart), so this will also fire for
+// videos meant only for CP until that's added upstream.
+exports.checkNewTrainingVideos = onSchedule(
+  { schedule: 'every 30 minutes', timeZone: 'Asia/Kolkata' },
+  async () => {
+    let videos;
+    try {
+      const res = await fetch('https://api.roswaltsmartcue.com/api/training-videos');
+      if (!res.ok) return;
+      const body = await res.json();
+      videos = body.data || [];
+    } catch (e) {
+      console.error('checkNewTrainingVideos fetch failed', e);
+      return;
+    }
+
+    const seenDoc = await db.collection('adminMeta').doc('smartcueSeenVideos').get();
+    const seenIds = new Set(seenDoc.data()?.ids || []);
+    const newVideos = videos.filter((v) => v._id && !seenIds.has(v._id));
+
+    if (newVideos.length > 0) {
+      const employeesSnap = await db.collection('employees').get();
+      for (const v of newVideos) {
+        await Promise.all(employeesSnap.docs.map((doc) => notifyEmployee(
+          doc.id,
+          'New Training Video',
+          `"${v.title || 'A new training video'}" has been added to Training Videos.`,
+          { type: 'trainingVideo', videoId: v._id },
+        )));
+      }
+    }
+
+    await db.collection('adminMeta').doc('smartcueSeenVideos').set({
+      ids: videos.map((v) => v._id).filter(Boolean),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+);
+
+// Notifies the employee's TL the moment they start Field Duty
+// (employees/{uid}/fieldDuty/status.active flips to true). Fires on both
+// the very first "start" (doc creation) and every later re-start (update).
+exports.onFieldDutyStarted = onDocumentWritten('employees/{uid}/fieldDuty/status', async (event) => {
+  const before = event.data.before?.data();
+  const after = event.data.after?.data();
+  if (!after?.active) return;
+  if (before?.active === true) return; // already notified for this session
+
+  const employeeDoc = await db.collection('employees').doc(event.params.uid).get();
+  const employeeId = employeeDoc.data()?.employeeId;
+  const employeeName = employeeDoc.data()?.name || 'An employee';
+  const tlUid = await findTlUid(employeeId);
+  if (!tlUid) return;
+
+  await notifyEmployee(
+    tlUid,
+    'Field Duty started',
+    `${employeeName} has started Field Duty. Open My Team to view their live route.`,
+    { type: 'fieldDutyStarted', employeeUid: event.params.uid },
+  );
+});
+
+// For a TL: everyone mapped to them via reportingMap.tlId. For an HOD: the
+// org chart's broader reporting line under them - both people mapped
+// directly via reportingMap.hodId (no TL assigned yet, or HOD-direct
+// reports) AND everyone under each of the HOD's own TLs (reportingMap.tlId
+// pointing at one of those TLs), so an HOD sees their whole department, not
+// just whoever has no TL. Poll-based (no live listener) since this crosses
+// between two different employees' data - deliberately kept server-side
+// rather than opening up direct cross-user Firestore reads.
+exports.listMyFieldDutyTeam = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
+  const myDoc = await db.collection('employees').doc(request.auth.uid).get();
+  const myEmployeeId = myDoc.data()?.employeeId;
+  if (!myEmployeeId) return { team: [] };
+
+  const docsById = new Map();
+  const directTl = await db.collection('reportingMap').where('tlId', '==', myEmployeeId).get();
+  for (const doc of directTl.docs) docsById.set(doc.id, doc);
+
+  const directHod = await db.collection('reportingMap').where('hodId', '==', myEmployeeId).get();
+  for (const doc of directHod.docs) docsById.set(doc.id, doc);
+
+  // Expand to each of the HOD's direct reports' own reports, so an HOD sees
+  // the full department (employee -> TL -> HOD), not only employees with no
+  // TL in between.
+  for (const tlEmployeeId of directHod.docs.map((d) => d.id)) {
+    const subReports = await db.collection('reportingMap').where('tlId', '==', tlEmployeeId).get();
+    for (const doc of subReports.docs) docsById.set(doc.id, doc);
+  }
+
+  const team = [];
+  for (const [employeeId, doc] of docsById) {
+    if (employeeId === myEmployeeId) continue;
+    const uid = await findUidByEmployeeId(employeeId);
+    if (!uid) continue;
+    const statusSnap = await db.collection('employees').doc(uid).collection('fieldDuty').doc('status').get();
+    const s = statusSnap.data();
+    team.push({
+      employeeId,
+      uid,
+      name: doc.data().chartName || employeeId,
+      active: s?.active === true,
+      currentLat: s?.currentLat ?? null,
+      currentLng: s?.currentLng ?? null,
+      startedAt: s?.startedAt ? s.startedAt.toDate().toISOString() : null,
+    });
+  }
+  return { team };
+});
+
+// For a TL: the live route (current position + trail) of one of their
+// direct reports. Verifies the caller is actually that person's mapped TL
+// before returning anything - this is the enforcement point, since the
+// underlying employees/{uid}/fieldDuty data isn't directly client-readable
+// cross-user (see firestore.rules).
+exports.getFieldDutyTrail = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
+  const targetUid = request.data?.uid;
+  if (!targetUid) throw new HttpsError('invalid-argument', 'uid is required.');
+
+  const myDoc = await db.collection('employees').doc(request.auth.uid).get();
+  const myEmployeeId = myDoc.data()?.employeeId;
+  const targetDoc = await db.collection('employees').doc(targetUid).get();
+  const targetEmployeeId = targetDoc.data()?.employeeId;
+
+  const mapSnap = await db.collection('reportingMap').doc(targetEmployeeId).get();
+  const targetTlId = mapSnap.data()?.tlId;
+  const targetHodId = mapSnap.data()?.hodId;
+  const isMyDirectReport = targetTlId === myEmployeeId || targetHodId === myEmployeeId;
+  // An HOD can also watch anyone under one of their own TLs (the same
+  // department-expansion listMyFieldDutyTeam applies).
+  const isUnderMyTl = targetTlId
+    ? (await db.collection('reportingMap').doc(targetTlId).get()).data()?.hodId === myEmployeeId
+    : false;
+  if (!targetEmployeeId || (!isMyDirectReport && !isUnderMyTl)) {
+    throw new HttpsError('permission-denied', "You are not this employee's TL or HOD.");
+  }
+
+  const statusDoc = db.collection('employees').doc(targetUid).collection('fieldDuty').doc('status');
+  const statusSnap = await statusDoc.get();
+  const trailSnap = await statusDoc.collection('trail').orderBy('recordedAt').limitToLast(500).get();
+
+  return {
+    active: statusSnap.data()?.active === true,
+    currentLat: statusSnap.data()?.currentLat ?? null,
+    currentLng: statusSnap.data()?.currentLng ?? null,
+    startedAt: statusSnap.data()?.startedAt ? statusSnap.data().startedAt.toDate().toISOString() : null,
+    trail: trailSnap.docs.map((d) => ({ latitude: d.data().latitude, longitude: d.data().longitude })),
+  };
+});
+
+// Mirrors a CP "Log Walk-In" tag into our own Firestore and notifies the
+// Sourcing Manager mapped to that CP - keyed by MahaRERA (the CP's actual
+// registered identity, same one already used for CP login and already sent
+// to SFDC with every walk-in). The CP app has no Firebase Auth session at
+// all (SFDC-token only, like the rest of the CP flow), so this is a plain
+// onCall with no request.auth check - same trust model as sendEmailOtp.
+// The mapping itself (cpSourcingMap/{mahaRERA} -> smEmployeeId) is
+// maintained on the web admin side, populated from SFDC's own CP-to-SM
+// records - not built here, this just reads it.
+exports.submitCPWalkInTag = onCall(async (request) => {
+  const d = request.data || {};
+  const mahaRERA = String(d.mahaRERA || '').trim();
+  if (!mahaRERA) throw new HttpsError('invalid-argument', 'mahaRERA is required.');
+
+  const docRef = await db.collection('cpWalkIns').add({
+    mahaRERA,
+    cpFirm: d.cpFirm || '',
+    cpName: d.cpName || '',
+    project: d.project || '',
+    clientName: d.clientName || '',
+    clientPhone: d.clientPhone || '',
+    configuration: d.configuration || '',
+    budget: d.budget || '',
+    status: d.status || 'Hot',
+    submittedAt: FieldValue.serverTimestamp(),
+  });
+
+  const mapSnap = await db.collection('cpSourcingMap').doc(mahaRERA).get();
+  const smEmployeeId = mapSnap.data()?.smEmployeeId;
+  if (smEmployeeId) {
+    const smUid = await findUidByEmployeeId(smEmployeeId);
+    if (smUid) {
+      await docRef.set({ smEmployeeId }, { merge: true });
+      await notifyEmployee(
+        smUid,
+        'New CP Walk-In tagged to you',
+        `${d.cpName || d.cpFirm || 'A channel partner'} tagged a walk-in: ${d.clientName || 'a client'} (${d.project || 'no project given'}).`,
+        { type: 'cpWalkInTagged', walkInId: docRef.id },
+      );
+    }
+  }
+
+  return { success: true };
+});
+
+// For a Sourcing Manager: lists every CP walk-in tagged to them
+// (cpWalkIns.smEmployeeId == their own employeeId), newest first.
+exports.listMyTaggedWalkIns = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
+  const myDoc = await db.collection('employees').doc(request.auth.uid).get();
+  const myEmployeeId = myDoc.data()?.employeeId;
+  if (!myEmployeeId) return { walkIns: [] };
+
+  const snap = await db.collection('cpWalkIns')
+    .where('smEmployeeId', '==', myEmployeeId)
+    .orderBy('submittedAt', 'desc')
+    .limit(100)
+    .get();
+
+  return {
+    walkIns: snap.docs.map((d) => {
+      const w = d.data();
+      return {
+        id: d.id, cpFirm: w.cpFirm, cpName: w.cpName, project: w.project,
+        clientName: w.clientName, clientPhone: w.clientPhone, configuration: w.configuration,
+        budget: w.budget, status: w.status,
+        submittedAt: w.submittedAt ? w.submittedAt.toDate().toISOString() : null,
+      };
+    }),
+  };
+});

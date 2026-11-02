@@ -2,7 +2,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../providers/notification_provider.dart';
+
+final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
+const _androidChannel = AndroidNotificationChannel(
+  'roswalt_updates_channel', 'Roswalt Updates',
+  description: 'Leave/regularisation decisions, training videos, and other app alerts.',
+  importance: Importance.high,
+);
 
 // Top-level function required by firebase_messaging for background messages.
 // Must be annotated with @pragma('vm:entry-point') and be a top-level or static function.
@@ -39,6 +47,16 @@ class NotificationService {
     );
     debugPrint('Notification permission status: ${settings.authorizationStatus}');
 
+    // flutter_local_notifications is what actually shows a system-tray
+    // banner while the app is in the foreground - FCM's own "notification"
+    // payload only auto-displays one for background/terminated state.
+    await _localNotifications.initialize(
+      const InitializationSettings(android: AndroidInitializationSettings('@mipmap/ic_launcher')),
+    );
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(_androidChannel);
+
     // Subscribe to topics so future sends can target groups without needing
     // individual device tokens.
     try {
@@ -50,12 +68,23 @@ class NotificationService {
     }
 
     // Foreground messages: FCM does NOT auto-show a system tray notification
-    // while the app is open, so we record it into our in-app history here.
+    // while the app is open, so we show one ourselves and record it into
+    // our in-app history.
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       debugPrint('Foreground FCM message: ${message.messageId}');
       final title = message.notification?.title ?? message.data['title'] ?? 'Notification';
       final body = message.notification?.body ?? message.data['body'] ?? '';
       _provider?.addNotification(title: title, body: body, data: message.data);
+      _localNotifications.show(
+        message.hashCode,
+        title,
+        body,
+        NotificationDetails(android: AndroidNotificationDetails(
+          _androidChannel.id, _androidChannel.name,
+          channelDescription: _androidChannel.description,
+          importance: Importance.high, priority: Priority.high,
+        )),
+      );
     });
 
     // When the user taps a notification and it opens/resumes the app.
