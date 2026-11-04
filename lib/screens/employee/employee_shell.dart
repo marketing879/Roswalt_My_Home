@@ -286,7 +286,9 @@ class _EmployeeShellState extends State<EmployeeShell> {
         ),
       extendBody: true,
       body: screens[_currentIndex],
-      bottomNavigationBar: Padding(
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(30),
@@ -306,6 +308,7 @@ class _EmployeeShellState extends State<EmployeeShell> {
               ]),
             ),
           ),
+        ),
         ),
       ),
       ),

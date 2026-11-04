@@ -340,7 +340,9 @@ class _ClientShellState extends State<ClientShell> {
       key: _scaffoldKey,
       drawer: _buildDrawer(isDark, themeProvider),
       body: screens[_currentIndex],
-      bottomNavigationBar: Container(
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
           borderRadius: const BorderRadius.vertical(
@@ -373,6 +375,7 @@ class _ClientShellState extends State<ClientShell> {
             _navItem(3, Icons.headset_mic_outlined,
                 Icons.headset_mic, 'Assistance', isDark),
           ],
+        ),
         ),
       ),
     );

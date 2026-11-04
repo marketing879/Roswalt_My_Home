@@ -168,19 +168,22 @@ class _PartnerShellState extends State<PartnerShell> {
         ]),
       ),
             body: screens[_currentIndex],
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1A0A00) : const Color(0xFF543813),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 12, offset: const Offset(0, -3))]),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _navItem(0, Icons.dashboard_outlined, Icons.dashboard, 'Dashboard', isDark),
-            _navItem(1, Icons.directions_walk_outlined, Icons.directions_walk, 'Visits', isDark),
-            _navItem(2, Icons.assignment_outlined, Icons.assignment, 'Bookings', isDark),
-            _navItem(3, Icons.play_circle_outline, Icons.play_circle, 'Training', isDark),
-            _navItem(4, Icons.person_outlined, Icons.person, 'Profile', isDark),
-          ]),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1A0A00) : const Color(0xFF543813),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 12, offset: const Offset(0, -3))]),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _navItem(0, Icons.dashboard_outlined, Icons.dashboard, 'Dashboard', isDark),
+              _navItem(1, Icons.directions_walk_outlined, Icons.directions_walk, 'Visits', isDark),
+              _navItem(2, Icons.assignment_outlined, Icons.assignment, 'Bookings', isDark),
+              _navItem(3, Icons.play_circle_outline, Icons.play_circle, 'Training', isDark),
+              _navItem(4, Icons.person_outlined, Icons.person, 'Profile', isDark),
+            ]),
+        ),
       ),
     );
   }

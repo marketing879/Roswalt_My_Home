@@ -29,22 +29,25 @@ class _TenantShellState extends State<TenantShell> {
 
     return Scaffold(
       body: screens[_currentIndex],
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: _bronze,
-          boxShadow: [BoxShadow(
-              color: Colors.black.withOpacity(0.2),
-              blurRadius: 12, offset: const Offset(0, -3))],
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _navItem(0, Icons.home_outlined, Icons.home, 'Home'),
-            _navItem(1, Icons.account_balance_wallet_outlined, Icons.account_balance_wallet, 'Compensation'),
-            _navItem(2, Icons.folder_outlined, Icons.folder, 'Documents'),
-            _navItem(3, Icons.headset_mic_outlined, Icons.headset_mic, 'Assistance'),
-          ],
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          decoration: BoxDecoration(
+            color: _bronze,
+            boxShadow: [BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 12, offset: const Offset(0, -3))],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _navItem(0, Icons.home_outlined, Icons.home, 'Home'),
+              _navItem(1, Icons.account_balance_wallet_outlined, Icons.account_balance_wallet, 'Compensation'),
+              _navItem(2, Icons.folder_outlined, Icons.folder, 'Documents'),
+              _navItem(3, Icons.headset_mic_outlined, Icons.headset_mic, 'Assistance'),
+            ],
+          ),
         ),
       ),
     );
