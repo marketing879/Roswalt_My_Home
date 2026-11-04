@@ -8,3 +8,4 @@ const String demandsClientId = 'YOUR_DEMANDS_CLIENT_ID';
 const String demandsClientSecret = 'YOUR_DEMANDS_CLIENT_SECRET';
 const String demandsUsername = 'YOUR_USERNAME';
 const String demandsPassword = 'YOUR_PASSWORD';
+const String nexusApiKey = 'YOUR_NEXUS_API_KEY';

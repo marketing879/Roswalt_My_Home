@@ -13,6 +13,7 @@ const String _demandsClientId = secrets.demandsClientId;
 const String _demandsClientSecret = secrets.demandsClientSecret;
 const String _demandsUsername = secrets.demandsUsername;
 const String _demandsPassword = secrets.demandsPassword;
+const String _nexusApiKey = secrets.nexusApiKey;
 class BookingData {
   final String bookingId;       // B-0408 (bookingNumber)
   final String sfdcId;          // a0AC4000001ReC5MAK (internal)
@@ -592,20 +593,58 @@ String _deriveStatus(String? dueDateStr) {
     // Org-wide staff directory (Firestore, looked up server-side via this
     // callable so the directory itself is never exposed to unauthenticated
     // clients) — populated with name/designation for everyone, phone/email
-    // filled in as they're provided. This is the only employee lookup path;
-    // the old SFDC employeeLookup endpoint was never built on the Salesforce
-    // side (confirmed to always 404), so falling back to it just replaced a
-    // clear "not found" with a misleading "Server error (404)".
+    // filled in as they're provided.
     try {
       final result = await FirebaseFunctions.instance.httpsCallable('lookupStaffByPhone').call({'phone': digits});
       final data = result.data;
       if (data is Map && data['found'] == true) {
         return Map<String, dynamic>.from(data['data'] as Map);
       }
-      _error = 'No employee record found for this number. Please check and try again.';
-      return null;
     } catch (e) {
       debugPrint('staffDirectory lookup error: $e');
+    }
+
+    // Roswalt Nexus HR system — the actual source of truth for who's
+    // currently staff. Anyone added there can log in immediately even if
+    // they were never separately added to the Firestore staffDirectory.
+    // Called directly from the app (not proxied through a Cloud Function)
+    // because Nexus's WAF blocks requests coming from Google Cloud's IP
+    // ranges with a flat 403 but allows ordinary client traffic through.
+    // Replaces the old SFDC employeeLookup fallback, which was never built
+    // on the Salesforce side (confirmed to always 404) and only ever
+    // produced a misleading "Server error (404)" instead of a real answer.
+    try {
+      final res = await http.get(
+        Uri.parse('https://rrpl-api.roswaltnexus.com/external/v1/users?limit=1000'),
+        headers: {'x-api-key': _nexusApiKey},
+      );
+      if (res.statusCode != 200) {
+        _error = 'Unable to connect. Please try again.';
+        return null;
+      }
+      final last10 = digits.length >= 10 ? digits.substring(digits.length - 10) : digits;
+      final body = jsonDecode(res.body);
+      final users = (body['data'] as List?) ?? [];
+      final match = users.cast<Map<String, dynamic>>().firstWhere(
+            (u) {
+              final uDigits = (u['mobile_number'] ?? '').toString().replaceAll(RegExp(r'\D'), '');
+              final uLast10 = uDigits.length >= 10 ? uDigits.substring(uDigits.length - 10) : uDigits;
+              return uLast10 == last10 && last10.length == 10;
+            },
+            orElse: () => const {},
+          );
+      if (match.isEmpty) {
+        _error = 'No employee record found for this number. Please check and try again.';
+        return null;
+      }
+      return {
+        'name': match['name'],
+        'employeeId': match['employee_code'],
+        'email': match['email'],
+        'designation': '',
+      };
+    } catch (e) {
+      debugPrint('Nexus staff lookup error: $e');
       _error = 'Network error. Please check your connection and try again.';
       return null;
     }
